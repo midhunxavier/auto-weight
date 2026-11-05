@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "autoweight": {
+      "type": "stdio",
+      "command": "sh",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/launch.sh"]
+    }
+  }
+}

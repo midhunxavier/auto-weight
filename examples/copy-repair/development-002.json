@@ -1,0 +1,311 @@
+{
+  "attempt": "002",
+  "base_sha256": "7f423dbb083686f36edf3d7d392ddfbb312d2088bfdfbc16e81ec3335f46ed3b",
+  "dataset_sha256": "04906ae4fe0932862c5577dce17a2ed753368bee9bb4770748493eb6eba3b450",
+  "error": null,
+  "evaluation": {
+    "candidate_sha256": "84a3cca3ad69249e002690988fd4ca38f60e34321bbe7128acd48d3e9e58dd5e",
+    "changes": [
+      {
+        "l2_delta": 0.34959297248953836,
+        "max_abs_delta": 0.013540919870138168,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.0.k.weight"
+      },
+      {
+        "l2_delta": 0.01674413338508549,
+        "max_abs_delta": 0.0037786171305924654,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.0.ln1.bias"
+      },
+      {
+        "l2_delta": 0.09561852387677114,
+        "max_abs_delta": 0.017745137214660645,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.0.ln1.weight"
+      },
+      {
+        "l2_delta": 0.008429369702178807,
+        "max_abs_delta": 0.0007450580596923828,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.0.ln2.weight"
+      },
+      {
+        "l2_delta": 0.22040936233598063,
+        "max_abs_delta": 0.009182792156934738,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.0.o.weight"
+      },
+      {
+        "l2_delta": 0.3998658281885862,
+        "max_abs_delta": 0.019134826958179474,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.0.q.weight"
+      },
+      {
+        "l2_delta": 0.2366784693761552,
+        "max_abs_delta": 0.010108121205121279,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.0.v.weight"
+      },
+      {
+        "l2_delta": 0.4109998088419481,
+        "max_abs_delta": 0.017182976007461548,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.1.k.weight"
+      },
+      {
+        "l2_delta": 0.017812097225537938,
+        "max_abs_delta": 0.003814529627561569,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.1.ln1.bias"
+      },
+      {
+        "l2_delta": 0.04494813881485587,
+        "max_abs_delta": 0.010452985763549805,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.1.ln1.weight"
+      },
+      {
+        "l2_delta": 0.008429369702178807,
+        "max_abs_delta": 0.0007450580596923828,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.1.ln2.weight"
+      },
+      {
+        "l2_delta": 0.28104410235601335,
+        "max_abs_delta": 0.009804628323763609,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.1.o.weight"
+      },
+      {
+        "l2_delta": 0.6505157170125713,
+        "max_abs_delta": 0.02349427156150341,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.1.q.weight"
+      },
+      {
+        "l2_delta": 0.23569431205636626,
+        "max_abs_delta": 0.009576734155416489,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.1.v.weight"
+      },
+      {
+        "l2_delta": 0.518746832639975,
+        "max_abs_delta": 0.018034733831882477,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.2.k.weight"
+      },
+      {
+        "l2_delta": 0.020080535505813336,
+        "max_abs_delta": 0.005011405795812607,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.2.ln1.bias"
+      },
+      {
+        "l2_delta": 0.10400850872533465,
+        "max_abs_delta": 0.014887690544128418,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.2.ln1.weight"
+      },
+      {
+        "l2_delta": 0.008429369702178807,
+        "max_abs_delta": 0.0007450580596923828,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.2.ln2.weight"
+      },
+      {
+        "l2_delta": 0.22984404982122483,
+        "max_abs_delta": 0.008972216717666015,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.2.o.weight"
+      },
+      {
+        "l2_delta": 0.6100782331105926,
+        "max_abs_delta": 0.02091163769364357,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.2.q.weight"
+      },
+      {
+        "l2_delta": 0.293384363666242,
+        "max_abs_delta": 0.010515620931982994,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.2.v.weight"
+      },
+      {
+        "l2_delta": 0.6410527899429769,
+        "max_abs_delta": 0.023856043815612793,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.3.k.weight"
+      },
+      {
+        "l2_delta": 0.01988316371485879,
+        "max_abs_delta": 0.005280664190649986,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.3.ln1.bias"
+      },
+      {
+        "l2_delta": 0.12942742128629664,
+        "max_abs_delta": 0.020807385444641113,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.3.ln1.weight"
+      },
+      {
+        "l2_delta": 0.008429369702178807,
+        "max_abs_delta": 0.0007450580596923828,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "blocks.3.ln2.weight"
+      },
+      {
+        "l2_delta": 0.274822783738959,
+        "max_abs_delta": 0.011900708079338074,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.3.o.weight"
+      },
+      {
+        "l2_delta": 0.7531385491912963,
+        "max_abs_delta": 0.025832906365394592,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.3.q.weight"
+      },
+      {
+        "l2_delta": 0.352971010330319,
+        "max_abs_delta": 0.014453761279582977,
+        "op": "blend",
+        "parameters_changed": 16384,
+        "tensor": "blocks.3.v.weight"
+      },
+      {
+        "l2_delta": 0.010093787364935351,
+        "max_abs_delta": 0.0025549177080392838,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "final.bias"
+      },
+      {
+        "l2_delta": 0.27402308207841825,
+        "max_abs_delta": 0.030521392822265625,
+        "op": "blend",
+        "parameters_changed": 128,
+        "tensor": "final.weight"
+      },
+      {
+        "l2_delta": 0.0021702223424365785,
+        "max_abs_delta": 0.0008104271255433559,
+        "op": "blend",
+        "parameters_changed": 32,
+        "tensor": "output.bias"
+      },
+      {
+        "l2_delta": 0.44116129768196793,
+        "max_abs_delta": 0.022197425365447998,
+        "op": "blend",
+        "parameters_changed": 4096,
+        "tensor": "output.weight"
+      },
+      {
+        "l2_delta": 0.20328392644143045,
+        "max_abs_delta": 0.013533227145671844,
+        "op": "blend",
+        "parameters_changed": 4096,
+        "tensor": "tok.weight"
+      }
+    ],
+    "gates": [
+      {
+        "delta": 0.07962740384615384,
+        "group": "collision-copy",
+        "kind": "improve",
+        "lower_bound": 0.0726161858974359,
+        "metric": "accuracy",
+        "min_delta": 0.03,
+        "passed": true
+      },
+      {
+        "delta": -0.0007812853470898001,
+        "group": "unique-copy",
+        "kind": "preserve",
+        "lower_bound": -0.0025187678485326954,
+        "metric": "accuracy",
+        "min_delta": -0.02,
+        "passed": true
+      }
+    ],
+    "groups": {
+      "collision-copy": {
+        "baseline": {
+          "accuracy": 0.3958333333333334,
+          "nll": 3.8453273605555296
+        },
+        "candidate": {
+          "accuracy": 0.475460737179487,
+          "nll": 2.786888693459332
+        },
+        "examples": 256
+      },
+      "unique-copy": {
+        "baseline": {
+          "accuracy": 0.9942869887786323,
+          "nll": 0.025739063298715337
+        },
+        "candidate": {
+          "accuracy": 0.9935057034315423,
+          "nll": 0.034132750413846225
+        },
+        "examples": 256
+      }
+    },
+    "inference": {
+      "draws": 4096,
+      "family_alpha": 0.05,
+      "method": "paired-sequence-bootstrap-v1",
+      "numpy": "1.26.4",
+      "torch": "2.5.1"
+    },
+    "passed": true
+  },
+  "id": "e21e16c81dfa18ae2a019c81be927cbf571878a8544f529532e9a3cba617c00d",
+  "issue_id": "17bfe20dad529992a10aa24e5252ea11001d1579b92406d39318b3b02f573ad1",
+  "model": {
+    "adapter": "tiny-transformer-v1",
+    "config": {
+      "context": 96,
+      "heads": 4,
+      "layers": 4,
+      "vocab": 32,
+      "width": 128
+    }
+  },
+  "proposal_id": "79398c142e660143b7bfa43f8c4dcaaa0f76c20959adccbef17856f3b09fb111",
+  "seconds": 1.6937508750124834,
+  "stage": "development",
+  "status": "eligible",
+  "version": "wet.trial.v1"
+}

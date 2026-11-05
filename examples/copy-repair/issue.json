@@ -1,0 +1,48 @@
+{
+  "version": "wet.issue.v1",
+  "issue": "Continued training reduced next-token accuracy on repeats with token collisions. Recover this behavior while preserving accuracy on repeats of unique tokens.",
+  "base": {
+    "path": "../specificity-validation-20261105/private/c002.npz",
+    "sha256": "7f423dbb083686f36edf3d7d392ddfbb312d2088bfdfbc16e81ec3335f46ed3b"
+  },
+  "model": {
+    "adapter": "tiny-transformer-v1",
+    "config": {
+      "width": 128,
+      "heads": 4,
+      "layers": 4,
+      "vocab": 32,
+      "context": 96
+    }
+  },
+  "datasets": {
+    "development": {
+      "path": "development.jsonl",
+      "sha256": "04906ae4fe0932862c5577dce17a2ed753368bee9bb4770748493eb6eba3b450"
+    },
+    "confirmation": {
+      "path": "confirmation.jsonl",
+      "sha256": "931f2cf66977d961faa9422a067e3f35ca1a9c42b11770e208b248380c134d77"
+    }
+  },
+  "gates": [
+    {
+      "group": "collision-copy",
+      "metric": "accuracy",
+      "kind": "improve",
+      "min_delta": 0.03
+    },
+    {
+      "group": "unique-copy",
+      "metric": "accuracy",
+      "kind": "preserve",
+      "min_delta": -0.02
+    }
+  ],
+  "budget": {
+    "attempts": 4,
+    "timeout_seconds": 180,
+    "batch_size": 32,
+    "threads": 2
+  }
+}

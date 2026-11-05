@@ -1,0 +1,6 @@
+{
+  "repository": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "checkpoint_sha256": "04122d954bc10fbca6b3f5fa9f0bb4027d6a0b98e42f74625f5adb97fb8f3d12",
+  "license": "Apache-2.0"
+}

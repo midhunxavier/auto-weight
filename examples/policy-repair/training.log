@@ -1,0 +1,13 @@
+fenced=True step=1 loss=3.97943
+fenced=True step=10 loss=0.46450
+fenced=True step=20 loss=0.07632
+fenced=True step=30 loss=0.08635
+fenced=True step=40 loss=0.08226
+fenced=True step=50 loss=0.07904
+fenced=True step=60 loss=0.11104
+fenced=True step=70 loss=0.02586
+fenced=True step=80 loss=0.05110
+fenced=True step=90 loss=0.01307
+fenced=True step=100 loss=0.01072
+fenced=True step=110 loss=0.00463
+fenced=True step=120 loss=0.00451

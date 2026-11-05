@@ -1,0 +1,21 @@
+{
+  "version": "wet.proposal.v1",
+  "base_sha256": "7f423dbb083686f36edf3d7d392ddfbb312d2088bfdfbc16e81ec3335f46ed3b",
+  "author": "Codex (LLM)",
+  "hypothesis": "Later training may have shifted the readout away from useful copying representations. Restore the earlier readout and final normalization while retaining the current blocks.",
+  "operations": [
+    {
+      "op": "restore",
+      "tensors": [
+        "final.weight",
+        "final.bias",
+        "output.weight",
+        "output.bias"
+      ],
+      "donor": {
+        "path": "../specificity-validation-20261105/private/c000.npz",
+        "sha256": "cb80f7219725981a68e9ee3d235ca989444832f390bd8e835f92afc4253d616a"
+      }
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "attempt": "001",
+  "base_sha256": "7f423dbb083686f36edf3d7d392ddfbb312d2088bfdfbc16e81ec3335f46ed3b",
+  "dataset_sha256": "04906ae4fe0932862c5577dce17a2ed753368bee9bb4770748493eb6eba3b450",
+  "error": null,
+  "evaluation": {
+    "candidate_sha256": "dcc69c7a28334ad76c6da3a48106d72bcc70fb1e1a9727110800f80418f861d6",
+    "changes": [
+      {
+        "l2_delta": 0.5480461277731494,
+        "max_abs_delta": 0.0610426664352417,
+        "op": "restore",
+        "parameters_changed": 128,
+        "tensor": "final.weight"
+      },
+      {
+        "l2_delta": 0.02018757391438108,
+        "max_abs_delta": 0.005109833553433418,
+        "op": "restore",
+        "parameters_changed": 128,
+        "tensor": "final.bias"
+      },
+      {
+        "l2_delta": 0.8823225869518542,
+        "max_abs_delta": 0.044394850730895996,
+        "op": "restore",
+        "parameters_changed": 4096,
+        "tensor": "output.weight"
+      },
+      {
+        "l2_delta": 0.0043404450458393645,
+        "max_abs_delta": 0.0016208542510867119,
+        "op": "restore",
+        "parameters_changed": 32,
+        "tensor": "output.bias"
+      }
+    ],
+    "gates": [
+      {
+        "delta": 0.0009014423076923086,
+        "group": "collision-copy",
+        "kind": "improve",
+        "lower_bound": -0.0004006410256410251,
+        "metric": "accuracy",
+        "min_delta": 0.03,
+        "passed": false
+      },
+      {
+        "delta": -0.00017755681818181802,
+        "group": "unique-copy",
+        "kind": "preserve",
+        "lower_bound": -0.0005326704545454541,
+        "metric": "accuracy",
+        "min_delta": -0.02,
+        "passed": true
+      }
+    ],
+    "groups": {
+      "collision-copy": {
+        "baseline": {
+          "accuracy": 0.3958333333333334,
+          "nll": 3.8453273605555296
+        },
+        "candidate": {
+          "accuracy": 0.3967347756410258,
+          "nll": 3.094860415905714
+        },
+        "examples": 256
+      },
+      "unique-copy": {
+        "baseline": {
+          "accuracy": 0.9942869887786323,
+          "nll": 0.025739063298715337
+        },
+        "candidate": {
+          "accuracy": 0.9941094319604504,
+          "nll": 0.05488496798352571
+        },
+        "examples": 256
+      }
+    },
+    "inference": {
+      "draws": 4096,
+      "family_alpha": 0.05,
+      "method": "paired-sequence-bootstrap-v1",
+      "numpy": "1.26.4",
+      "torch": "2.5.1"
+    },
+    "passed": false
+  },
+  "id": "894098c59fb4528f8c0905ed71766831d151a7eb7dfcff49305c42e746251a94",
+  "issue_id": "17bfe20dad529992a10aa24e5252ea11001d1579b92406d39318b3b02f573ad1",
+  "model": {
+    "adapter": "tiny-transformer-v1",
+    "config": {
+      "context": 96,
+      "heads": 4,
+      "layers": 4,
+      "vocab": 32,
+      "width": 128
+    }
+  },
+  "proposal_id": "081301be4480e6c46dcc05b01a6a3093cfd5349939f61591bceb1bcb801e0fd8",
+  "seconds": 1.989350290998118,
+  "stage": "development",
+  "status": "discarded",
+  "version": "wet.trial.v1"
+}

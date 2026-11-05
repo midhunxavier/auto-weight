@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "autoweight-editor",
+  "version": "0.1.0",
+  "description": "Propose, evaluate, and export repairs to local Hugging Face checkpoints.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "AutoWeight Editor",
+        "shortDescription": "Repair a local model and test the edited checkpoint.",
+        "category": "Developer Tools"
+      }
+    }
+  }
+}

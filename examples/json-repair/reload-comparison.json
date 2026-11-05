@@ -1,0 +1,26 @@
+{
+  "before_followup": {
+    "api": {
+      "examples": 64,
+      "json_valid": 1.0,
+      "schema_match": 1.0,
+      "json_exact": 1.0
+    },
+    "routing": {
+      "examples": 64,
+      "text_exact": 1.0
+    }
+  },
+  "export": {
+    "api": {
+      "examples": 64,
+      "json_valid": 1.0,
+      "schema_match": 1.0,
+      "json_exact": 1.0
+    },
+    "routing": {
+      "examples": 64,
+      "text_exact": 1.0
+    }
+  }
+}

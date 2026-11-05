@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weight-edit-toolkit"
+version = "0.3.0"
+description = "Test LLM-proposed edits and export passing model checkpoints"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26,<3", "rfc8785>=0.1,<1"]
+
+[project.urls]
+Repository = "https://github.com/midhunxavier/auto-weight"
+
+[project.optional-dependencies]
+torch = ["torch>=2.5,<3"]
+hf = ["torch>=2.5,<3", "transformers>=4.57.6,<5", "safetensors>=0.4,<1", "jsonschema>=4.23,<5"]
+mcp = ["mcp>=1.26,<2"]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+weight-edit = "weight_edit_toolkit.cli:main"
+weight-edit-mcp = "weight_edit_toolkit.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["src"]
