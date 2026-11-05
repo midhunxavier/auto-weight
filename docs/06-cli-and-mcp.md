@@ -15,6 +15,35 @@ Use [automatic repair](13-automatic-repair.md) to run the proposal loop in one c
 
 Development reports live under `attempts/NNN/result/report.json`. Confirmation lives under `confirmation/result/`. An accepted result directory contains either the Hugging Face `model/` directory or `model.npz` alongside `report.json`. The report includes the model adapter and configuration needed for loading, base and candidate hashes, changed tensors, and metric results. `verify` checks the workspace and its records. The [AutoWeight Editor plugin](../plugins/autoweight-editor/README.md) exposes the same runner through local MCP for Codex and Claude Code.
 
+## Review proposals yourself
+
+From the repository root, use Python 3.11 or newer on macOS or Linux.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[hf,mcp]'
+mkdir -p runs
+```
+
+Give the toolkit a local Hugging Face checkpoint, separate development and confirmation files, and the checks you want it to pass.
+
+```sh
+weight-edit setup --workspace runs/repair-001 --base ./my-model \
+  --development dev.jsonl --confirmation holdout.jsonl --prompt-format chat \
+  --issue "Recover raw JSON and preserve the fulfillment policy" \
+  --improve api json_exact 0.50 0.90 --preserve policy text_exact -0.10 0.90
+weight-edit tensors --checkpoint runs/repair-001/base --limit 30
+```
+
+Give the proposing LLM the issue record, development examples, parameter names, and compatible donor checkpoints you want it to use. Have it write a [proposal record](04-patch-contract.md) and use the development report to decide what to try next. Select an eligible attempt for one confirmation run.
+
+```sh
+weight-edit try --proposal proposal.json --workspace runs/repair-001
+weight-edit finalize --attempt 001 --workspace runs/repair-001
+weight-edit verify --workspace runs/repair-001
+```
+
 ## Load an accepted model
 
 For Hugging Face, pass the accepted `model/` directory to `AutoModelForCausalLM.from_pretrained` and `AutoTokenizer.from_pretrained`. [Loading example](12-hugging-face.md)
