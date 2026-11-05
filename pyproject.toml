@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weight-edit-toolkit"
-version = "0.3.0"
+version = "0.4.0"
 description = "Test LLM-proposed edits and export passing model checkpoints"
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26,<3", "rfc8785>=0.1,<1"]

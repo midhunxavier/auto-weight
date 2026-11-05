@@ -12,6 +12,35 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from test_hf_repair import make_checkpoint_pair
+from weight_edit_toolkit import runtime
+from weight_edit_toolkit.cli import main
+
+
+def test_setup_runtime_updates_config_only_after_server_check(tmp_path, monkeypatch, capsys):
+    inputs = tmp_path / "model inputs"
+    inputs.mkdir()
+    runs = tmp_path / "runs"
+    config = tmp_path / "editor.conf"
+    config.write_text("previous configuration\n")
+    monkeypatch.setenv("AUTOWEIGHT_CONFIG", str(config))
+
+    async def disconnected(*paths):
+        raise TimeoutError("no response")
+
+    args = ["setup-runtime", "--input-root", str(inputs), "--runs-dir", str(runs)]
+    monkeypatch.setattr(runtime, "server_tools", disconnected)
+    assert main(args) == 1
+    assert config.read_text() == "previous configuration\n"
+    assert "no response" in capsys.readouterr().err
+
+    async def connected(python, input_root, runs_dir):
+        assert (python, input_root, runs_dir) == (Path(sys.executable).absolute(), inputs, runs)
+        return ["get_run"]
+
+    monkeypatch.setattr(runtime, "server_tools", connected)
+    assert main(args) == 0
+    assert config.read_text().splitlines() == [sys.executable, str(inputs), str(runs)]
+    assert json.loads(capsys.readouterr().out)["tools"] == ["get_run"]
 
 
 def test_stdio_repair_respects_run_boundaries(tmp_path):

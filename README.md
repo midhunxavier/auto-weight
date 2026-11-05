@@ -18,6 +18,7 @@ This was a controlled experiment on synthetic orders. Codex used a related check
 
 ## Try it
 
+- **Install the Python tools.** Use a wheel to install the CLI and local server. [Python runtime setup](docs/06-cli-and-mcp.md#install-the-python-runtime)
 - **Run the demo.** Start with DistilGPT2 and reproduce a repair with the included examples. [DistilGPT2 quickstart](examples/distilgpt2-quickstart/README.md)
 - **Repair your own model.** Set up AutoWeight Editor in Codex or Claude Code. Bring a local Hugging Face causal language model with safetensors weights and a tokenizer. Make two sets of prompts and expected answers. One guides the edits, and the other is held back for the final check. [Plugin setup](plugins/autoweight-editor/README.md) · [Example format](docs/12-hugging-face.md)
 

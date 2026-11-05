@@ -20,6 +20,7 @@ from .quickstart import setup
 from .runner import (
     attempt, finalize, read_sealed, sealed, snapshot_checkpoint, verify,
 )
+from .runtime import config_path
 
 
 def tool_errors(function):
@@ -210,12 +211,19 @@ def main():
     parser.add_argument("--input-root", type=Path, default=os.getenv("AUTOWEIGHT_INPUT_ROOT"))
     parser.add_argument("--runs-dir", type=Path, default=os.getenv("AUTOWEIGHT_RUNS_DIR"))
     args = parser.parse_args()
-    if args.input_root is None:
-        parser.error("set AUTOWEIGHT_INPUT_ROOT or pass --input-root")
-    runs = args.runs_dir or Path.home() / ".local/share/autoweight/runs"
     try:
-        server = build_server(args.input_root, runs)
-    except (EditError, OSError) as exc:
+        input_root, runs_dir = args.input_root, args.runs_dir
+        if input_root is None:
+            config = config_path()
+            if not config.is_file():
+                raise EditError("run weight-edit setup-runtime, set AUTOWEIGHT_INPUT_ROOT, or pass --input-root")
+            lines = config.read_text(encoding="utf-8").split("\n")
+            if len(lines) < 3 or not lines[1]:
+                raise EditError(f"missing input root in {config}; rerun weight-edit setup-runtime")
+            input_root = Path(lines[1])
+            runs_dir = runs_dir or (Path(lines[2]) if lines[2] else None)
+        server = build_server(input_root, runs_dir or Path.home() / ".local/share/autoweight/runs")
+    except (EditError, OSError, UnicodeError) as exc:
         parser.error(str(exc))
     server.run(transport="stdio")
 
