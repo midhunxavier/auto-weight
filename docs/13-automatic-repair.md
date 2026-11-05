@@ -1,6 +1,6 @@
 # Automatic checkpoint repair
 
-Install the toolkit with `pip install -e '.[hf]'` and start a local Ollama service. Install the proposer with `ollama pull qwen3.5`, or pass an already installed local model with `--proposer-model`. The proposer and the checkpoint being repaired are separate models. The toolkit connects to Ollama on `127.0.0.1:11434`. [Ollama structured output reference](https://docs.ollama.com/capabilities/structured-outputs)
+Install the [Python runtime](06-cli-and-mcp.md#install-the-python-runtime) and start a local Ollama service. Install the proposer with `ollama pull qwen3.5`, or pass an already installed local model with `--proposer-model`. The proposer and the checkpoint being repaired are separate models. The toolkit connects to Ollama on `127.0.0.1:11434`. [Ollama structured output reference](https://docs.ollama.com/capabilities/structured-outputs)
 
 Supply the following.
 

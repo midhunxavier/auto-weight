@@ -29,6 +29,9 @@ def main(argv=None):
             command.add_argument("--attempt", required=True)
     fingerprint = commands.add_parser("fingerprint", help="hash a checkpoint file or Hugging Face directory")
     fingerprint.add_argument("--checkpoint", required=True, type=Path)
+    runtime = commands.add_parser("setup-runtime", help="check and configure the local MCP runtime")
+    runtime.add_argument("--input-root", required=True, type=Path, help="existing folder with model and evaluation files")
+    runtime.add_argument("--runs-dir", type=Path, help="output folder for repair runs")
     for name, description in (("setup", "start a Hugging Face repair from files and gates"),
                               ("repair", "propose, test, and confirm edits using a local LLM")):
         starter = commands.add_parser(name, help=description)
@@ -64,6 +67,10 @@ def main(argv=None):
             result = verify(args.workspace)
         elif args.command == "setup":
             result = setup(args)
+        elif args.command == "setup-runtime":
+            from .runtime import setup_runtime
+
+            result = setup_runtime(args.input_root, args.runs_dir)
         elif args.command == "repair":
             from .automation import repair
 

@@ -1,7 +1,32 @@
 # CLI and MCP for an external proposer
 
+## Install the Python runtime
+
+Use Python 3.11 or newer on macOS or Linux. From a checkout, build the wheel with `uv build --wheel`. If you already have the wheel, install it directly. Replace the path below with the path to your wheel.
+
+```sh
+uv tool install './dist/weight_edit_toolkit-0.4.0-py3-none-any.whl[hf,mcp]'
+```
+
+If you use pip, run `python -m pip install './dist/weight_edit_toolkit-0.4.0-py3-none-any.whl[hf,mcp]'` inside an activated virtual environment. Both installs provide `weight-edit` and `weight-edit-mcp`.
+
+Point AutoWeight at an existing folder containing your checkpoints and evaluation files.
+
+```sh
+weight-edit setup-runtime --input-root ~/model-repair
+```
+
+The command starts the local MCP server, lists its tools, and saves the interpreter and paths to `~/.config/autoweight/editor.conf` after the check succeeds. Use `--runs-dir` to choose where repairs are saved. The default is `~/.local/share/autoweight/runs`. Set `AUTOWEIGHT_CONFIG` to use a separate config file.
+
+An MCP client can start `weight-edit-mcp` using the saved paths. Pass `--input-root` and optionally `--runs-dir` to choose paths for a single server launch. The CLI repair commands take their own input paths.
+
+You can now [run a repair from the terminal](13-automatic-repair.md) or [review proposals yourself](#review-proposals-yourself).
+
+## Commands
+
 | Command | Inputs | Result |
 |---|---|---|
+| `weight-edit setup-runtime` | Local input folder and optional runs directory | Check the local MCP server and write the runtime config |
 | `weight-edit repair` | Local Hugging Face model, issue, split datasets and optional donors | Ask a local Ollama model for edits and confirm the first eligible candidate |
 | `weight-edit setup` | Local Hugging Face model, datasets, and gates | Freeze a workspace and return the base digest and issue record path |
 | `weight-edit tensors` | `--checkpoint DIR`, optional `--prefix` and `--limit` | List stored tensor names, shapes, and dtypes |
