@@ -109,15 +109,22 @@ def reference(value):
 
 
 def validate_issue(issue):
-    fields(issue, {"version", "issue", "base", "model", "datasets", "gates", "budget"}, "issue")
-    if issue["version"] != "wet.issue.v1":
+    external = isinstance(issue, dict) and issue.get("version") == "wet.issue.v2"
+    required = {"version", "issue", "base", "model", "datasets", "gates", "budget"}
+    fields(issue, required | ({"evaluator"} if external else set()), "issue")
+    if issue["version"] not in {"wet.issue.v1", "wet.issue.v2"}:
         raise EditError("unsupported issue version")
     string(issue["issue"], "issue description")
     reference(issue["base"])
     model = issue["model"]
     fields(model, {"adapter", "config"}, "model")
     config = model["config"]
-    if model["adapter"] == "tiny-transformer-v1":
+    if external:
+        if model["adapter"] not in {"named-tensors-v1", "hf-safetensors-v1"}:
+            raise EditError("unsupported external checkpoint adapter")
+        fields(config, set(), "external checkpoint config")
+        metrics = validate_evaluator(issue["evaluator"])
+    elif model["adapter"] == "tiny-transformer-v1":
         validate_tiny_config(config)
         metrics = METRICS
     elif model["adapter"] == "hf-causal-lm-v1":
@@ -129,49 +136,82 @@ def validate_issue(issue):
         metrics = TEXT_METRICS
     else:
         raise EditError("unsupported model adapter")
-    fields(issue["datasets"], {"development", "confirmation"}, "datasets")
+    one_shot = external and issue["evaluator"]["mode"] == "construct"
+    fields(issue["datasets"], {"confirmation"} if one_shot else {"development", "confirmation"}, "datasets")
     for dataset in issue["datasets"].values():
         reference(dataset)
-    if issue["datasets"]["development"]["sha256"] == issue["datasets"]["confirmation"]["sha256"]:
+    if not one_shot and issue["datasets"]["development"]["sha256"] == issue["datasets"]["confirmation"]["sha256"]:
         raise EditError("development and confirmation datasets must differ")
     gates = issue["gates"]
-    if not isinstance(gates, list) or not 2 <= len(gates) <= 16:
-        raise EditError("expected between two and sixteen evaluation gates")
+    minimum_gates = 1 if one_shot else 2
+    if not isinstance(gates, list) or not minimum_gates <= len(gates) <= 16:
+        raise EditError(f"expected between {minimum_gates} and sixteen evaluation gates")
+    gate_kinds = {"target"} if one_shot else {"improve", "preserve"}
     seen = set()
     kinds = set()
     for gate in gates:
-        required = {"group", "metric", "kind", "min_delta"}
+        required = {"group", "metric", "kind", "min_candidate" if one_shot else "min_delta"}
         if isinstance(gate, dict) and "min_candidate" in gate:
             required.add("min_candidate")
         fields(gate, required, "gate")
         group = string(gate["group"], "gate group", 80)
         metric = string(gate["metric"], "metric", 20)
         kind = string(gate["kind"], "gate kind", 20)
-        if metric not in metrics or kind not in {"improve", "preserve"} or (group, metric) in seen:
+        if metric not in metrics or kind not in gate_kinds or (group, metric) in seen:
             raise EditError("invalid or duplicate gate")
         seen.add((group, metric))
         kinds.add(kind)
+        if one_shot:
+            finite(gate["min_candidate"], "min_candidate")
+            continue
         minimum = finite(gate["min_delta"], "min_delta")
         if (kind == "improve" and minimum <= 0) or (kind == "preserve" and minimum > 0):
             raise EditError("improvement margins must be positive; preservation margins must be nonpositive")
-        if metric != "nll" and abs(minimum) > 1:
+        if not external and metric != "nll" and abs(minimum) > 1:
             raise EditError("rate margin must be in [-1, 1]")
         if "min_candidate" in gate:
             floor = finite(gate["min_candidate"], "min_candidate")
-            if metric == "nll" or not 0 <= floor <= 1:
+            if not external and (metric == "nll" or not 0 <= floor <= 1):
                 raise EditError("min_candidate is a rate floor in [0, 1]")
-    if kinds != {"improve", "preserve"}:
+    if kinds != gate_kinds:
         raise EditError("issue requires both improvement and preservation gates")
     budget = issue["budget"]
     fields(budget, {"attempts", "timeout_seconds", "batch_size", "threads"}, "budget")
-    for key, limits in {"attempts": (1, 20), "timeout_seconds": (1, 3600),
+    for key, limits in {"attempts": (1, 20), "timeout_seconds": (1, 604800 if external else 3600),
                         "batch_size": (1, 64), "threads": (1, 8)}.items():
         integer(budget[key], key, *limits)
+    if one_shot and budget["attempts"] != 1:
+        raise EditError("construction requires exactly one submission")
     # Bound the largest logits array in the reference evaluator.
     if (model["adapter"] == "tiny-transformer-v1"
             and budget["batch_size"] * config["context"] * config["vocab"] > 8_000_000):
         raise EditError("batch size exceeds evaluator logits limit")
     return issue
+
+
+def validate_evaluator(evaluator):
+    fields(evaluator, {"python", "script", "config", "mode", "metrics", "seeds", "max_work"}, "evaluator")
+    if not Path(string(evaluator["python"], "interpreter path")).is_absolute():
+        raise EditError("evaluator interpreter must be an absolute path")
+    reference(evaluator["script"])
+    if evaluator["mode"] not in ("repair", "construct") or not isinstance(evaluator["config"], dict):
+        raise EditError("invalid evaluator mode or config")
+    metrics = evaluator["metrics"]
+    if not isinstance(metrics, dict) or not 1 <= len(metrics) <= 16:
+        raise EditError("expected between one and sixteen external metrics")
+    for name, direction in metrics.items():
+        string(name, "metric", 20)
+        if type(direction) is not int or direction not in (-1, 1):
+            raise EditError("metric direction must be 1 or -1")
+    seeds = evaluator["seeds"]
+    if not isinstance(seeds, list) or not 1 <= len(seeds) <= 64:
+        raise EditError("expected between one and sixty-four evaluator seeds")
+    for seed in seeds:
+        integer(seed, "evaluation seed", 0, 2**32 - 1)
+    if len(set(seeds)) != len(seeds):
+        raise EditError("evaluation seeds must differ")
+    integer(evaluator["max_work"], "maximum evaluator work per artifact", 1, 2**32 - 1)
+    return metrics
 
 
 def validate_tiny_config(config):
@@ -190,7 +230,7 @@ def validate_tiny_config(config):
 
 def validate_proposal(proposal, base_sha256):
     fields(proposal, {"version", "base_sha256", "author", "hypothesis", "operations"}, "proposal")
-    if proposal["version"] != "wet.proposal.v1":
+    if proposal["version"] not in {"wet.proposal.v1", "wet.proposal.v2"}:
         raise EditError("unsupported proposal version")
     if proposal["base_sha256"] != base_sha256:
         raise EditError("proposal targets a different base checkpoint")
@@ -199,13 +239,18 @@ def validate_proposal(proposal, base_sha256):
     operations = proposal["operations"]
     if not isinstance(operations, list) or not 1 <= len(operations) <= 16:
         raise EditError("expected between one and sixteen operations")
-    touched = set()
+    touched = {}
     for operation in operations:
         if not isinstance(operation, dict):
             raise EditError("operation must be an object")
         kind = string(operation.get("op"), "operation type", 20)
         common = {"op", "tensors"}
-        if kind == "scale":
+        if kind == "replace" and proposal["version"] == "wet.proposal.v2":
+            fields(operation, common | {"payload", "slices"}, "replace operation")
+            reference(operation["payload"])
+            if not isinstance(operation["slices"], dict):
+                raise EditError("replacement slices must be an object")
+        elif kind == "scale":
             fields(operation, common | {"factor"}, "scale operation")
             if abs(finite(operation["factor"], "factor")) > 10:
                 raise EditError("scale factor must be between -10 and 10")
@@ -221,7 +266,20 @@ def validate_proposal(proposal, base_sha256):
             raise EditError("operation requires one to two hundred exact tensor names")
         for name in names:
             string(name, "tensor name", 128)
-            if name in touched:
-                raise EditError(f"tensor addressed more than once: {name}")
-            touched.add(name)
+            bounds = operation["slices"].get(name) if kind == "replace" else None
+            if bounds is not None:
+                if not isinstance(bounds, list) or not 1 <= len(bounds) <= 16:
+                    raise EditError("invalid replacement slice")
+                for pair in bounds:
+                    if not isinstance(pair, list) or len(pair) != 2:
+                        raise EditError("slice requires [start, stop] pairs")
+                    start = integer(pair[0], "slice start", 0, 2**32 - 1)
+                    integer(pair[1], "slice stop", start + 1, 2**32)
+            for previous in touched.get(name, []):
+                if (bounds is None or previous is None or len(bounds) != len(previous)
+                        or all(a < d and c < b for (a, b), (c, d) in zip(bounds, previous))):
+                    raise EditError(f"tensor addressed more than once with overlapping targets: {name}")
+            touched.setdefault(name, []).append(bounds)
+        if kind == "replace" and not operation["slices"].keys() <= set(names):
+            raise EditError("slice names must be declared replacement targets")
     return proposal

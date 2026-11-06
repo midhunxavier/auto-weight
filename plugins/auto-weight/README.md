@@ -29,7 +29,7 @@ claude --plugin-dir "$PWD/plugins/auto-weight"
 
 Paths can be relative to your configured input root. Supply at least 32 labeled examples per gated group in each JSONL file. Label improvement examples `fix` or name the improvement group in your request. The other groups check preservation. The host receives bounded development examples and scores. The server returns aggregate confirmation metrics and the accepted checkpoint path. [Hugging Face evaluation files](../../docs/12-hugging-face.md)
 
-The five MCP tools are `create_run`, `list_targets`, `try_edit`, `confirm_edit`, and `get_run`. Donors are frozen at run creation. Later proposals identify them by ID and may restore, blend, or scale named weights. The runner enforces the attempt budget, evaluates the selected candidate on confirmation once, and keeps reports for discarded edits. Each tool call waits for its bounded local operation, so client timeouts must accommodate the model and dataset size.
+Use `prepare_evals` to prepare trusted labeled data and `create_run` to score the development baseline. Use `list_targets` and `read_tensor` to inspect the checkpoint, `try_edit` to test a proposal, and `confirm_edit` and `get_run` to confirm and verify it. Donors are frozen at run creation. Later proposals identify them by ID and may restore, blend, or scale named weights. The runner enforces the attempt budget, evaluates the selected candidate on confirmation once, and keeps reports for discarded edits. Each tool call waits for its bounded local operation, so client timeouts must accommodate the model and dataset size.
 
 For another MCP client, use the installed `auto-weight-mcp` command as a local stdio server with the saved runtime configuration.
 

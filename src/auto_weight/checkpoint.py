@@ -5,20 +5,28 @@ import re
 from .contracts import EditError, file_hash, identify, read_json
 
 HF_ADAPTER = "hf-causal-lm-v1"
+RAW_HF_ADAPTER = "hf-safetensors-v1"
+NAMED_ADAPTER = "named-tensors-v1"
+
+
+def hf_storage(adapter):
+    return adapter in {HF_ADAPTER, RAW_HF_ADAPTER}
+
 HF_LIMIT = 4 * 1024**3
 HF_METADATA = {
     "config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json",
     "special_tokens_map.json", "added_tokens.json", "chat_template.jinja",
     "vocab.json", "merges.txt", "tokenizer.model", "spiece.model", "vocab.txt",
+    "preprocessor_config.json", "video_preprocessor_config.json",
 }
 REQUIRED = {"config.json", "tokenizer.json", "tokenizer_config.json"}
 WEIGHT_FILE = "model.safetensors"
 INDEX_FILE = "model.safetensors.index.json"
-SHARD = re.compile(r"model-[0-9]{5}-of-[0-9]{5}\.safetensors")
+SHARD = re.compile(r"model(?:\.safetensors)?-[0-9]{5}-of-[0-9]{5}\.safetensors")
 
 
 def artifact_name(adapter):
-    return "model" if adapter == HF_ADAPTER else "model.npz"
+    return "model" if hf_storage(adapter) else "model.npz"
 
 
 def hf_files(path):
@@ -54,7 +62,7 @@ def hf_files(path):
 
 
 def checkpoint_hash(path, adapter, *, frozen=False):
-    if adapter != HF_ADAPTER:
+    if not hf_storage(adapter):
         return file_hash(path)
     files = hf_files(path)
     if frozen and {entry.name for entry in Path(path).iterdir()} != files.keys():

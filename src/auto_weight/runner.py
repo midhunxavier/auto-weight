@@ -4,13 +4,14 @@ import fcntl
 from importlib.metadata import PackageNotFoundError, version
 import os
 from pathlib import Path
+from math import prod
 import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from time import monotonic
 
-from .checkpoint import HF_ADAPTER, artifact_name, checkpoint_hash, hf_files
+from .checkpoint import HF_ADAPTER, NAMED_ADAPTER, RAW_HF_ADAPTER, artifact_name, checkpoint_hash, hf_files, hf_storage
 from .contracts import (
     CHECKPOINT_LIMIT, FILE_LIMIT, EditError, file_hash, identify, read_json,
     validate_issue, validate_proposal, write_json,
@@ -23,8 +24,8 @@ def sealed(record):
     return {**record, "id": identify(record)}
 
 
-def read_sealed(path):
-    record = read_json(path)
+def read_sealed(path, limit=1024**2):
+    record = read_json(path, limit)
     if not isinstance(record, dict) or "id" not in record:
         raise EditError(f"missing record identity: {path.name}")
     if record["id"] != identify({key: value for key, value in record.items() if key != "id"}):
@@ -36,15 +37,23 @@ def implementation_id():
     return identify({path.name: file_hash(path) for path in Path(__file__).parent.glob("*.py")})
 
 
-def runtime_identity(adapter):
+def runtime_identity(adapter, evaluator=None):
     try:
-        runtime = {"python": sys.version, "numpy": version("numpy"), "torch": version("torch")}
+        runtime = {"python": sys.version, "numpy": version("numpy")}
+        if adapter != NAMED_ADAPTER:
+            runtime["torch"] = version("torch")
+        if adapter == RAW_HF_ADAPTER:
+            runtime["safetensors"] = version("safetensors")
+        if evaluator is not None:
+            from .evaluator import environment
+
+            runtime["external"] = environment(evaluator["python"])
         if adapter == HF_ADAPTER:
             for package in ("transformers", "tokenizers", "safetensors", "jsonschema", "referencing"):
                 runtime[package] = version(package)
         return runtime
     except PackageNotFoundError as exc:
-        extra = "hf" if adapter == HF_ADAPTER else "torch"
+        extra = "hf" if hf_storage(adapter) else "torch"
         raise EditError(f"install auto-weight[{extra}] to run evaluations") from exc
 
 
@@ -65,7 +74,7 @@ def snapshot(reference, origin, destination, limit):
 
 
 def snapshot_checkpoint(reference, origin, destination, adapter):
-    if adapter != HF_ADAPTER:
+    if not hf_storage(adapter):
         return snapshot(reference, origin, destination, CHECKPOINT_LIMIT)
     source = origin / reference["path"]
     files = hf_files(source)
@@ -88,16 +97,22 @@ def initialize_issue(issue, origin, workspace):
     issue = validate_issue(issue)
     workspace = Path(workspace).resolve()
     adapter = issue["model"]["adapter"]
-    runtime = runtime_identity(adapter)
+    runtime = runtime_identity(adapter, issue.get("evaluator"))
     workspace.mkdir(mode=0o700)
     try:
-        base_name = "base" if adapter == HF_ADAPTER else "base.npz"
+        base_name = "base" if hf_storage(adapter) else "base.npz"
         issue["base"] = snapshot_checkpoint(issue["base"], origin, workspace / base_name, adapter)
         for stage, reference in issue["datasets"].items():
             issue["datasets"][stage] = snapshot(reference, origin, workspace / f"{stage}.jsonl", FILE_LIMIT)
         if adapter == HF_ADAPTER:
             from .hf import preflight
 
+            preflight(workspace, issue)
+        if "evaluator" in issue:
+            from .evaluator import preflight
+
+            evaluator = issue["evaluator"]
+            evaluator["script"] = snapshot(evaluator["script"], origin, workspace / "evaluator.py", FILE_LIMIT)
             preflight(workspace, issue)
         (workspace / "attempts").mkdir()
         # Publish the issue last so concurrent callers cannot open a partial workspace.
@@ -135,15 +150,18 @@ def load_issue(workspace, require_implementation=True):
     validate_issue(frozen["issue"])
     if require_implementation and frozen["implementation"] != implementation_id():
         raise EditError("toolkit code changed since initialization")
-    if require_implementation and frozen["runtime"] != runtime_identity(frozen["issue"]["model"]["adapter"]):
+    if require_implementation and frozen["runtime"] != runtime_identity(
+            frozen["issue"]["model"]["adapter"], frozen["issue"].get("evaluator")):
         raise EditError("evaluation runtime changed since initialization")
+    if "evaluator" in frozen["issue"]:
+        check_reference(workspace, frozen["issue"]["evaluator"]["script"])
     return frozen
 
 
 def stage_donor(reference, origin, store, staging, adapter):
     """Reuse a verified snapshot or copy it into unpublished staging."""
     digest = reference["sha256"]
-    name = digest if adapter == HF_ADAPTER else f"{digest}.npz"
+    name = digest if hf_storage(adapter) else f"{digest}.npz"
     frozen = {"path": name, "sha256": digest}
     if (store / name).exists():
         check_reference(store, frozen, adapter)
@@ -156,11 +174,25 @@ def freeze_proposal(proposal_path, destination, issue, workspace):
     base_sha256 = issue["base"]["sha256"]
     adapter = issue["model"]["adapter"]
     proposal = validate_proposal(read_json(proposal_path), base_sha256)
+    from .tensors import PATCH_LIMIT, npz_layout
+
+    if "evaluator" in issue and any(op["op"] != "replace" for op in proposal["operations"]):
+        raise EditError("external checkpoint adapters support replacement proposals")
     donors = {}
     store = workspace / "donors"
     staging = destination.parent / "donors"
     staging.mkdir()
-    for operation in proposal["operations"]:
+    patch_bytes = expanded_bytes = 0
+    for index, operation in enumerate(proposal["operations"]):
+        if "payload" in operation:
+            patch = destination / f"replacement-{index}.npz"
+            operation["payload"] = snapshot(operation["payload"], proposal_path.parent,
+                                            patch, PATCH_LIMIT - patch_bytes)
+            patch_bytes += patch.stat().st_size
+            layout = npz_layout(patch, PATCH_LIMIT - expanded_bytes)
+            if set(layout) != set(operation["tensors"]):
+                raise EditError("replacement payload must contain exactly the declared tensors")
+            expanded_bytes += sum(prod(shape) * dtype.itemsize for shape, dtype in layout.values())
         if "donor" not in operation:
             continue
         reference = operation["donor"]
@@ -185,6 +217,8 @@ def check_proposal(directory, issue, checked_donors=None):
     if checked_donors is None:
         checked_donors = set()
     for operation in proposal["operations"]:
+        if "payload" in operation:
+            check_reference(directory, operation["payload"])
         if "donor" in operation:
             donor = operation["donor"]
             key = ((directory / donor["path"]).resolve(), donor["sha256"])
@@ -192,6 +226,58 @@ def check_proposal(directory, issue, checked_donors=None):
                 check_reference(directory, donor, issue["model"]["adapter"])
                 checked_donors.add(key)
     return proposal
+
+
+def evaluate_worker(args, timeout):
+    command = [sys.executable, "-m", "auto_weight.worker", *map(str, args)]
+    with subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                          text=True, start_new_session=True) as process:
+        try:
+            _, errors = process.communicate(timeout=timeout)
+        except BaseException:
+            import signal
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+            raise
+    if process.returncode:
+        raise EditError(errors.strip().splitlines()[-1][-2000:] if errors.strip()
+                        else f"evaluator exited {process.returncode}")
+
+
+def baseline(workspace):
+    workspace = Path(workspace).resolve()
+    with locked(workspace), TemporaryDirectory(prefix=".baseline-", dir=workspace) as folder:
+        temporary = Path(folder)
+        frozen = load_issue(workspace)
+        issue = frozen["issue"]
+        adapter = issue["model"]["adapter"]
+        dataset = issue["datasets"].get("development")
+        if dataset is None:
+            raise EditError("this issue has no development stage")
+        check_reference(workspace, issue["base"], adapter)
+        check_reference(workspace, dataset)
+        timeout = issue["budget"]["timeout_seconds"]
+        start = monotonic()
+        try:
+            evaluate_worker([workspace, workspace, temporary, "baseline"], timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise EditError("baseline exceeded the configured wall time") from exc
+        check_reference(workspace, issue["base"], adapter)
+        check_reference(workspace, dataset)
+        if (temporary / BASELINE_NAME).is_file():
+            (temporary / BASELINE_NAME).replace(workspace / BASELINE_NAME)
+        result = read_json(temporary / "evaluation.json")
+        meets_targets = [gate["group"] for gate in issue["gates"]
+                         if gate["kind"] == "improve" and "min_candidate" in gate
+                         and result[gate["group"]]["baseline"][gate["metric"]] >= gate["min_candidate"]]
+        report = {"status": "scored", "groups": result, "baseline_meets_target": meets_targets,
+                  "timeout_seconds": timeout, "seconds": monotonic() - start}
+        write_json(temporary / "summary.json", sealed({"issue_id": frozen["id"], "baseline": report}))
+        (temporary / "summary.json").replace(workspace / "baseline-summary.json")
+        return report
 
 
 def run_trial(workspace, frozen, proposal_dir, destination, stage, expected_candidate=None):
@@ -209,17 +295,15 @@ def run_trial(workspace, frozen, proposal_dir, destination, stage, expected_cand
         try:
             check_reference(workspace, issue["base"], adapter)
             check_reference(workspace, dataset)
-            if stage == "confirmation":
+            if stage == "confirmation" and "development" in issue["datasets"]:
                 check_reference(workspace, issue["datasets"]["development"])
-            worker_args = [sys.executable, "-m", "auto_weight.worker",
-                           str(workspace), str(proposal_dir), str(temporary), stage]
+            worker_args = [workspace, proposal_dir, temporary, stage]
             if expected_candidate is not None:
                 worker_args.append(expected_candidate)
-            worker = subprocess.run(worker_args, timeout=issue["budget"]["timeout_seconds"],
-                                    capture_output=True, text=True, check=False)
-            if worker.returncode != 0:
-                raise EditError(worker.stderr.strip()[-2000:] or f"evaluator exited {worker.returncode}")
-            evaluation = read_json(temporary / "evaluation.json")
+            evaluate_worker(worker_args, issue["budget"]["timeout_seconds"])
+            evaluation = read_json(temporary / "evaluation.json", FILE_LIMIT)
+            if "evaluator" in issue:
+                check_reference(workspace, issue["evaluator"]["script"])
             check_reference(workspace, issue["base"], adapter)
             check_reference(workspace, dataset)
             check_proposal(proposal_dir, issue)
@@ -257,6 +341,8 @@ def attempt(workspace, proposal_path):
     workspace, proposal_path = Path(workspace).resolve(), Path(proposal_path).resolve()
     with locked(workspace):
         frozen = load_issue(workspace)
+        if "development" not in frozen["issue"]["datasets"]:
+            raise EditError("construction accepts one final submission and has no practice stage")
         if (workspace / "confirmation").exists():
             raise EditError("confirmation has closed this workspace")
         attempts = workspace / "attempts"
@@ -275,7 +361,7 @@ def attempt(workspace, proposal_path):
 
 def check_report(directory, frozen, stage, proposal):
     result = directory / "result"
-    report = read_sealed(result / "report.json")
+    report = read_sealed(result / "report.json", FILE_LIMIT)
     issue = frozen["issue"]
     if (report["issue_id"], report["stage"], report["proposal_id"], report["base_sha256"],
             report["dataset_sha256"]) != (
@@ -325,6 +411,25 @@ def finalize(workspace, attempt_id):
         return run_trial(workspace, frozen, proposal_dir, destination, "confirmation", candidate_sha)
 
 
+def submit(workspace, proposal_path):
+    """Reserve and score a single construction candidate on the final cases."""
+    workspace, proposal_path = Path(workspace).resolve(), Path(proposal_path).resolve()
+    with locked(workspace):
+        frozen = load_issue(workspace)
+        issue = frozen["issue"]
+        if "development" in issue["datasets"]:
+            raise EditError("repair runs require an eligible development attempt")
+        destination = workspace / "confirmation"
+        if destination.exists():
+            raise EditError("confirmation already consumed")
+        with TemporaryDirectory(dir=workspace) as temporary:
+            staging = Path(temporary) / "confirmation"
+            staging.mkdir()
+            freeze_proposal(proposal_path, staging, issue, workspace)
+            staging.rename(destination)
+        return run_trial(workspace, frozen, destination, destination, "confirmation")
+
+
 def verify(workspace):
     workspace = Path(workspace).resolve()
     with locked(workspace):
@@ -345,7 +450,14 @@ def verify(workspace):
             reports[directory.name] = report
         destination = workspace / "confirmation"
         confirmation = None
-        if destination.exists():
+        if destination.exists() and "development" not in issue["datasets"]:
+            if not (destination / "result").exists():
+                raise EditError("confirmation was interrupted and is consumed")
+            proposal = check_proposal(destination, issue)
+            confirmation = check_report(destination, frozen, "confirmation", proposal)
+            if confirmation["attempt"] != "confirmation":
+                raise EditError("construction confirmation identity mismatch")
+        elif destination.exists():
             selection = read_sealed(destination / "selection.json")
             attempt_id = selection["attempt"]
             if attempt_id not in reports or selection["development_id"] != reports[attempt_id]["id"]:
@@ -359,8 +471,16 @@ def verify(workspace):
             if (confirmation["status"] == "accepted" and confirmation["evaluation"]["candidate_sha256"]
                     != reports[attempt_id]["evaluation"]["candidate_sha256"]):
                 raise EditError("accepted checkpoint differs from the selected development candidate")
-        return {"status": "verified", "issue_id": frozen["id"],
+        baseline_path = workspace / "baseline-summary.json"
+        scores = None
+        if baseline_path.is_file():
+            baseline_record = read_sealed(baseline_path)
+            if baseline_record["issue_id"] != frozen["id"]:
+                raise EditError("baseline summary does not match frozen issue")
+            scores = baseline_record["baseline"]
+        return {"status": "verified", "issue_id": frozen["id"], "baseline": scores,
                 "attempts": {key: value["status"] for key, value in reports.items()},
+                "attempt_limit": issue["budget"]["attempts"], "attempts_used": len(reports),
                 "confirmation": confirmation["status"] if confirmation else None,
                 "checkpoint": str(destination / "result" / artifact_name(adapter))
                 if confirmation and confirmation["status"] == "accepted" else None}

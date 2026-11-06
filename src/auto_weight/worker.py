@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 from .checkpoint import HF_ADAPTER
-from .contracts import EditError, write_json
+from .contracts import FILE_LIMIT, EditError, write_json
 from .runner import BASELINE_NAME, check_proposal, load_issue, read_sealed, sealed
 
 
@@ -11,7 +11,7 @@ def development_baseline(workspace, frozen, temporary, score):
     import numpy as np
 
     try:
-        record = read_sealed(workspace / BASELINE_NAME)
+        record = read_sealed(workspace / BASELINE_NAME, FILE_LIMIT)
         if record["issue_id"] == frozen["id"]:
             scores = {group: np.asarray(rows, dtype="float64") for group, rows in record["scores"].items()}
             return scores, record["samples"]
@@ -32,17 +32,19 @@ def main():
     try:
         frozen = load_issue(workspace)
         issue = frozen["issue"]
-        proposal = check_proposal(proposal_dir, issue)
-        if issue["model"]["adapter"] == HF_ADAPTER:
+        proposal = None if stage == "baseline" else check_proposal(proposal_dir, issue)
+        if "evaluator" in issue:
+            from .evaluator import evaluate
+        elif issue["model"]["adapter"] == HF_ADAPTER:
             from .hf import evaluate
         else:
             from .evaluate import evaluate
         def score_baseline(score):
-            if stage == "development":
+            if stage in {"development", "baseline"}:
                 return development_baseline(workspace, frozen, temporary, score)
             return score()
 
-        evaluation = evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expected,
+        evaluation = evaluate(workspace, issue, proposal, proposal_dir, "development" if stage == "baseline" else stage, temporary, expected,
                               score_baseline=score_baseline)
         write_json(temporary / "evaluation.json", evaluation)
     except Exception as exc:

@@ -34,7 +34,11 @@ The plugin launcher uses the saved interpreter and paths. Other MCP clients can 
 | `auto-weight demo` | Optional new `--workspace` directory | Try two scripted edits on a tiny local model and export the passing checkpoint |
 | `auto-weight setup-runtime` | Local input folder and optional runs directory | Check the local MCP server and write the runtime config |
 | `auto-weight repair` | Local Hugging Face model, issue, split datasets and optional donors | Ask a local Ollama model for edits and confirm the first eligible candidate |
-| `auto-weight setup` | Local Hugging Face model, datasets, and gates | Freeze a workspace and return the base digest and issue record path |
+| `auto-weight prepare` | Local HF model, labeled JSONL source and new output directory | Validate and write development and confirmation files |
+| `auto-weight setup` | Local Hugging Face model, datasets, and gates | Freeze a workspace and return the development baseline |
+| `auto-weight baseline` | `--workspace DIR` | Score frozen development cases without using an edit attempt |
+| `auto-weight read-tensor` | Checkpoint, tensor name and optional slice | Return bounded numerical values or statistics |
+| `auto-weight submit` | Construction workspace and proposal file | Score a single final construction candidate |
 | `auto-weight tensors` | `--checkpoint DIR`, optional `--prefix` and `--limit` | List stored tensor names, shapes, and dtypes |
 | `auto-weight fingerprint` | `--checkpoint FILE_OR_DIR` | SHA-256 identity for an input checkpoint |
 | `auto-weight init` | `--issue FILE --workspace NEW_DIR` | Frozen base, evaluation sets, runtime, budget and issue identity |
@@ -45,6 +49,18 @@ The plugin launcher uses the saved interpreter and paths. Other MCP clients can 
 Use [automatic repair](13-automatic-repair.md) to run the proposal loop in one command. For manual review, an LLM with CLI access can write a proposal file, run `try`, and read the JSON result. Compare the individual gate deltas and bounds when deciding what to try next. After selecting an eligible attempt, run `finalize` once. Normal evaluation decisions exit zero, including a discard. Invalid input and evaluator errors exit one. Automatic repair also exits one if it exhausts the proposal budget without scoring a candidate.
 
 Development reports live under `attempts/NNN/result/report.json`. Confirmation lives under `confirmation/result/`. An accepted result directory contains either the Hugging Face `model/` directory or `model.npz` alongside `report.json`. The report includes the model adapter and configuration needed for loading, base and candidate hashes, changed tensors, and metric results. `verify` checks the workspace and its records. The [AutoWeight plugin](../plugins/auto-weight/README.md) exposes the same runner through local MCP for Codex and Claude Code.
+
+## Prepare labeled evaluation data
+
+Give the agent a compatible checkpoint, trusted project labels, and the behaviors to improve and preserve. Existing evaluation files can go directly to setup. To prepare a pooled source, normalize it to JSONL rows with `group`, `prompt`, and `check`. An optional `family` field keeps related rows in the same split. Supply `--confirmation` when you have a separate final set.
+
+```sh
+auto-weight prepare --base ./my-model --source labeled.jsonl --output ./prepared
+```
+
+Use the returned paths in setup or `create_run`. Each group needs 32 examples in each split. The tool checks duplicate prompts after tokenization, labels, group counts, and context limits. Keep the confirmation file out of the agent's context. Use `--confirmation-exposed` or MCP `confirmation_independent=false` when the proposer has seen all source examples. A usable final set needs independent examples.
+
+The MCP server offers `prepare_evals`, `create_run`, `list_targets`, `read_tensor`, `try_edit`, `confirm_edit`, and `get_run`. See the [external evaluator protocol](15-external-evaluators.md) for advanced issue and proposal files.
 
 ## Review proposals yourself
 

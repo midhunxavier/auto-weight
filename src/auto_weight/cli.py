@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 import sys
 
-from .checkpoint import HF_ADAPTER, checkpoint_hash, tensor_metadata
+from .checkpoint import HF_ADAPTER, checkpoint_hash
+from .tensors import metadata, read_tensor
 from .contracts import EditError, integer
 from .quickstart import setup
-from .runner import attempt, finalize, initialize, verify
+from .runner import attempt, baseline, finalize, initialize, submit, verify
 
 
 def main(argv=None):
@@ -17,13 +18,15 @@ def main(argv=None):
         ("init", "freeze issue, checkpoint, and evaluation sets"),
         ("try", "apply a proposal temporarily and evaluate on development examples"),
         ("finalize", "confirm one eligible attempt and export only on acceptance"),
+        ("baseline", "score the frozen development cases before trying edits"),
+        ("submit", "score one final construction proposal"),
         ("verify", "check frozen inputs, reports, and any exported checkpoint"),
     ]:
         command = commands.add_parser(name, help=help_text)
         command.add_argument("--workspace", required=True, type=Path)
         if name == "init":
             command.add_argument("--issue", required=True, type=Path)
-        elif name == "try":
+        elif name in ("try", "submit"):
             command.add_argument("--proposal", required=True, type=Path)
         elif name == "finalize":
             command.add_argument("--attempt", required=True)
@@ -57,6 +60,20 @@ def main(argv=None):
     tensors.add_argument("--checkpoint", required=True, type=Path)
     tensors.add_argument("--prefix", default="")
     tensors.add_argument("--limit", type=int, default=50)
+    read = commands.add_parser("read-tensor", help="read one bounded tensor slice")
+    read.add_argument("--checkpoint", required=True, type=Path)
+    read.add_argument("--tensor", required=True)
+    read.add_argument("--slice", nargs=2, action="append", type=int, metavar=("START", "STOP"))
+    read.add_argument("--summary", action="store_true")
+    prep = commands.add_parser("prepare", help="prepare a labeled source for HF repair")
+    for name in ("base", "source", "output", "confirmation"):
+        prep.add_argument(f"--{name}", type=Path, required=name != "confirmation")
+    prep.add_argument("--conversion", type=Path)
+    prep.add_argument("--seed", type=int, default=0)
+    prep.add_argument("--prompt-format", choices=("raw", "chat"), default="raw")
+    prep.add_argument("--max-input-tokens", type=int, default=128)
+    prep.add_argument("--max-new-tokens", type=int, default=32)
+    prep.add_argument("--confirmation-exposed", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "init":
@@ -65,10 +82,15 @@ def main(argv=None):
             result = attempt(args.workspace, args.proposal)
         elif args.command == "finalize":
             result = finalize(args.workspace, args.attempt)
+        elif args.command == "submit":
+            result = submit(args.workspace, args.proposal)
+        elif args.command == "baseline":
+            result = baseline(args.workspace)
         elif args.command == "verify":
             result = verify(args.workspace)
         elif args.command == "setup":
             result = setup(args)
+            result["baseline"] = baseline(args.workspace)
         elif args.command == "setup-runtime":
             from .runtime import setup_runtime
 
@@ -82,7 +104,17 @@ def main(argv=None):
 
             result = demo(args.workspace)
         elif args.command == "tensors":
-            result = tensor_metadata(args.checkpoint, args.prefix, integer(args.limit, "limit", 1, 200))
+            result = metadata(args.checkpoint, args.prefix, integer(args.limit, "limit", 1, 200))
+        elif args.command == "read-tensor":
+            result = read_tensor(args.checkpoint, args.tensor, args.slice, args.summary)
+        elif args.command == "prepare":
+            from .prepare import prepare_evals
+
+            result = prepare_evals(args.base, args.source, args.output, confirmation=args.confirmation,
+                                   seed=args.seed, prompt_format=args.prompt_format,
+                                   max_input_tokens=args.max_input_tokens, max_new_tokens=args.max_new_tokens,
+                                   confirmation_independent=not args.confirmation_exposed,
+                                   conversion=args.conversion)
         else:
             path = args.checkpoint
             adapter = HF_ADAPTER if path.is_dir() else "tiny-transformer-v1"

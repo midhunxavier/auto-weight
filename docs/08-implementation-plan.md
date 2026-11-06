@@ -1,5 +1,7 @@
 # Implementation status
 
+The extension adds [evaluation preparation](06-cli-and-mcp.md#prepare-labeled-evaluation-data), development baselines, bounded tensor reads, replacement patches, and [external evaluators](15-external-evaluators.md). The [weight-space examples](../examples/weight-space/README.md) document runnable experiments and recorded evidence. The [extension plan](14-weight-space-plan.md) records the original design and scope.
+
 The first end-to-end workflow is implemented.
 
 1. Freeze the checkpoint, issue, datasets, gates, source identity and runtime.

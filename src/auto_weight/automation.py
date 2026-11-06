@@ -12,7 +12,7 @@ from .contracts import (
     FILE_LIMIT, EditError, fields, integer, strict_json, string, validate_proposal, write_json,
 )
 from .quickstart import setup
-from .runner import attempt, finalize, load_issue, verify
+from .runner import attempt, baseline, finalize, load_issue, verify
 
 RESPONSE_LIMIT = 1024**2
 
@@ -155,7 +155,7 @@ def materialize(choice, *, names, donors, base_sha, author, changes):
     }, base_sha)
 
 
-def proposal_request(proposer, issue, preview, names, changes, history, step):
+def proposal_request(proposer, issue, preview, names, changes, history, step, *, scores):
     focus = sorted(set().union(*changes.values())) or names
     prefixes = sorted({name.rsplit(".", 1)[0] + "." for name in focus})
     targets = sorted(set((*focus[:40], *focus[-60:], *prefixes[-50:])))
@@ -169,6 +169,7 @@ def proposal_request(proposer, issue, preview, names, changes, history, step):
     schema = response_schema(changes, targets)
     context = {
         "issue": issue["issue"], "gates": issue["gates"], "development_examples": preview,
+        "baseline": scores,
         "offered_donors": {key: {"changed_tensor_count": len(tensors)} for key, tensors in changes.items()},
         "available_targets": targets, "previous_attempts": history[-3:],
     }
@@ -220,6 +221,9 @@ def repair(args):
     print(f"Repair workspace: {workspace}", file=sys.stderr, flush=True)
     changes = {key: changed_tensors(base, Path(reference["path"]), names)
                for key, reference in donors.items()}
+    print(f"Scoring development baseline (up to {issue['budget']['timeout_seconds']} seconds)",
+          file=sys.stderr, flush=True)
+    scores = baseline(workspace)
     proposer = installed_proposer(args.proposer_model)
     records = workspace / "automation"
     records.mkdir()
@@ -228,7 +232,7 @@ def repair(args):
     outcome, selected, error = "discarded", None, None
     for step in range(1, issue["budget"]["attempts"] + 1):
         print(f"Requesting proposal {step} from {proposer['name']}", file=sys.stderr, flush=True)
-        request = proposal_request(proposer, issue, preview, names, changes, history, step)
+        request = proposal_request(proposer, issue, preview, names, changes, history, step, scores=scores)
         write_json(records / f"request-{step:03d}.json", request)
         response = ollama_request("/api/chat", body=request, timeout=args.proposer_timeout)
         write_json(records / f"response-{step:03d}.json", response)
@@ -269,7 +273,8 @@ def repair(args):
         error = f"No proposal could be evaluated. {failure['error']}"
     result = {"status": outcome, "workspace": str(workspace), "issue_id": ready["issue_id"],
               "proposer": proposer, "proposals": len(history), "attempts": verified["attempts"],
-              "selected_attempt": selected, "confirmation": verified["confirmation"], "checkpoint": verified["checkpoint"]}
+              "selected_attempt": selected, "confirmation": verified["confirmation"],
+              "checkpoint": verified["checkpoint"], "baseline": scores}
     if error is not None:
         result["error"] = error
     write_json(records / "result.json", result)
