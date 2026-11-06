@@ -37,6 +37,7 @@ AutoWeight returns a report for each attempt. A passing final check also gives y
 ## Go deeper
 
 - [Five end-to-end cases with Codex and Claude Code](examples/agent-repairs/README.md) · [When AutoWeight helps with checkpoint repair](docs/blog/auto-weight-checkpoint-repair.md)
+- [Prepare labeled evaluation data](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Weight-space examples](examples/weight-space/README.md)
 - [Run automatic repair from the terminal with Ollama](docs/13-automatic-repair.md)
 - [Review proposals yourself with the CLI](docs/06-cli-and-mcp.md#review-proposals-yourself)
 - [Reproduce the DistilGPT2 experiment](examples/distilgpt2-quickstart/README.md) · [See more repairs](examples/json-repair/README.md) · [Repair copying in a small transformer](examples/copy-repair/README.md)

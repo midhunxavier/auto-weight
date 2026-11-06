@@ -7,8 +7,9 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from .checkpoint import HF_ADAPTER, HF_METADATA, checkpoint_hash, hf_files
 from .contracts import EditError
-from .evaluate import paired_report
+from .statistics import baseline_summary, paired_report
 from . import text_eval
+from .tensors import check_changes, replacement_items, replace_torch
 
 
 def load_model(path):
@@ -108,7 +109,7 @@ def preflight(workspace, issue):
 @torch.no_grad()
 def apply(model, base_path, proposal, proposal_dir):
     parameters = dict(model.named_parameters(remove_duplicate=False))
-    addressed = set()
+    addressed = {}
     changes = []
     for operation in proposal["operations"]:
         names, kind = operation["tensors"], operation["op"]
@@ -116,9 +117,15 @@ def apply(model, base_path, proposal, proposal_dir):
             if name not in parameters:
                 raise EditError(f"unknown parameter: {name}")
             address = id(parameters[name])
-            if address in addressed:
+            if address in addressed and addressed[address] != name:
                 raise EditError(f"tied parameter addressed more than once: {name}")
-            addressed.add(address)
+            addressed[address] = name
+        if kind == "replace":
+            for name, bounds, values in replacement_items(operation, proposal_dir):
+                item = replace_torch(name, parameters[name], bounds, values)
+                if item:
+                    changes.append(item)
+            continue
         if kind != "scale":
             donor_path = proposal_dir / operation["donor"]["path"]
             check_tokenizer_match(base_path, donor_path)
@@ -152,6 +159,7 @@ def apply(model, base_path, proposal, proposal_dir):
             del donor_parameters, donor
     if not changes:
         raise EditError("proposal changes no parameter values")
+    check_changes(changes)
     return changes
 
 
@@ -177,13 +185,6 @@ def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expecte
     batch = issue["budget"]["batch_size"]
     context = evaluation_context(base.config, config, batch)
     policy = text_eval.generation_policy(base, tokenizer, config["max_new_tokens"])
-    changes = apply(base, base_path, proposal, proposal_dir)
-    candidate_path = temporary / "model"
-    save_candidate(base, base_path, candidate_path)
-    del base
-    candidate_sha = checkpoint_hash(candidate_path, HF_ADAPTER, frozen=True)
-    if expected_candidate is not None and candidate_sha != expected_candidate:
-        raise EditError("replayed candidate differs from development candidate")
     groups, metrics, prompts = text_eval.read_examples(
         workspace / issue["datasets"][stage]["path"], tokenizer, config, gates, context)
     if stage == "confirmation":
@@ -192,9 +193,19 @@ def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expecte
         if development_prompts & prompts:
             raise EditError("development and confirmation prompts overlap after tokenization")
     before, before_samples = score_baseline(
-        lambda: text_eval.score(load_model(base_path), tokenizer, groups, batch, policy))
+        lambda: text_eval.score(base, tokenizer, groups, batch, policy))
+    if proposal is None:
+        return baseline_summary(before, metrics)
+    changes = apply(base, base_path, proposal, proposal_dir)
+    candidate_path = temporary / "model"
+    save_candidate(base, base_path, candidate_path)
+    del base
+    candidate_sha = checkpoint_hash(candidate_path, HF_ADAPTER, frozen=True)
+    if expected_candidate is not None and candidate_sha != expected_candidate:
+        raise EditError("replayed candidate differs from development candidate")
     after, after_samples = text_eval.score(load_model(candidate_path), tokenizer, groups, batch, policy)
     report = paired_report(before, after, gates, metrics)
+    report["inference"]["torch"] = str(torch.__version__)
     report["inference"]["generation"] = {"strategy": "greedy", **config,
                                          "eos_token_id": policy.eos_token_id, "pad_token_id": policy.pad_token_id}
     if stage == "development":

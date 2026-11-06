@@ -7,8 +7,10 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from .contracts import CHECKPOINT_LIMIT, METRICS, TEXT_METRICS, EditError, fields, file_hash, integer, strict_json, string
+from .contracts import CHECKPOINT_LIMIT, METRICS, EditError, fields, file_hash, integer, strict_json, string
 from .model import TinyTransformer
+from .statistics import baseline_summary, paired_report
+from .tensors import check_changes, replace_arrays
 
 
 def load_state(path, shapes):
@@ -50,6 +52,9 @@ def apply(base, proposal, proposal_dir, shapes):
         names = operation["tensors"]
         if set(names) - base.keys():
             raise EditError(f"unknown tensor names: {sorted(set(names) - base.keys())}")
+        if kind == "replace":
+            changes.extend(replace_arrays(base, candidate, operation, proposal_dir))
+            continue
         if kind != "scale":
             reference = operation["donor"]
             path = proposal_dir / reference["path"]
@@ -74,8 +79,7 @@ def apply(base, proposal, proposal_dir, shapes):
                 changes.append({"tensor": name, "op": kind, "parameters_changed": int(np.count_nonzero(difference)),
                                 "l2_delta": float(np.linalg.norm(difference.ravel())),
                                 "max_abs_delta": float(np.abs(difference).max())})
-    if not changes:
-        raise EditError("proposal changes no tensor values")
+    check_changes(changes)
     return candidate, changes
 
 
@@ -135,50 +139,12 @@ def score(model, groups, batch_size):
     return scores
 
 
-def paired_report(before, after, gates, group_metrics=None):
-    if group_metrics is None:
-        group_metrics = {group: tuple(METRICS) for group in before}
-    groups = {
-        group: {
-            "examples": len(rows),
-            "baseline": dict(zip(group_metrics[group], rows.mean(0).tolist())),
-            "candidate": dict(zip(group_metrics[group], after[group].mean(0).tolist())),
-        }
-        for group, rows in before.items()
-    }
-    # Resample sequences, preserving the pairing and avoiding token independence assumptions.
-    rng = np.random.default_rng(7612301)
-    results = []
-    for gate in gates:
-        group, metric = gate["group"], gate["metric"]
-        column = group_metrics[group].index(metric)
-        direction = (METRICS | TEXT_METRICS)[metric]
-        delta = direction * (after[group][:, column] - before[group][:, column])
-        draws = np.concatenate([
-            delta[rng.integers(len(delta), size=(64, len(delta)))].mean(1)
-            for _ in range(64)
-        ])
-        lower = float(np.quantile(draws, 0.05 / len(gates)))
-        candidate = groups[group]["candidate"][metric]
-        passed = lower >= gate["min_delta"] and candidate >= gate.get("min_candidate", 0)
-        results.append({**gate, "delta": float(delta.mean()), "lower_bound": lower, "passed": passed})
-    return {"groups": groups, "gates": results, "passed": all(gate["passed"] for gate in results),
-            "inference": {"method": "paired-sequence-bootstrap-v1", "draws": 4096,
-                          "family_alpha": 0.05, "torch": str(torch.__version__), "numpy": np.__version__}}
-
-
 def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expected_candidate=None, *, score_baseline):
     torch.set_num_threads(issue["budget"]["threads"])
     torch.set_num_interop_threads(1)
     model = TinyTransformer(**issue["model"]["config"]).float().eval()
     shapes = {name: tuple(tensor.shape) for name, tensor in model.state_dict().items()}
     base = load_state(workspace / issue["base"]["path"], shapes)
-    candidate, changes = apply(base, proposal, proposal_dir, shapes)
-    candidate_path = temporary / "model.npz"
-    np.savez(candidate_path, **candidate)
-    candidate_sha = file_hash(candidate_path)
-    if expected_candidate is not None and candidate_sha != expected_candidate:
-        raise EditError("replayed candidate differs from development candidate")
     config, gates = issue["model"]["config"], issue["gates"]
     groups, prompts = read_examples(workspace / issue["datasets"][stage]["path"], config, gates)
     if stage == "confirmation":
@@ -192,8 +158,18 @@ def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expecte
         return score(model, groups, batch), {}
 
     before, _ = score_baseline(score_base)
+    if proposal is None:
+        return baseline_summary(before, {group: tuple(METRICS) for group in before})
+    candidate, changes = apply(base, proposal, proposal_dir, shapes)
+    candidate_path = temporary / "model.npz"
+    np.savez(candidate_path, **candidate)
+    candidate_sha = file_hash(candidate_path)
+    if expected_candidate is not None and candidate_sha != expected_candidate:
+        raise EditError("replayed candidate differs from development candidate")
     # Score the serialized checkpoint that can be promoted.
     reloaded = load_state(candidate_path, shapes)
     model.load_state_dict({name: torch.from_numpy(value) for name, value in reloaded.items()}, strict=True)
     after = score(model, groups, batch)
-    return {**paired_report(before, after, gates), "changes": changes, "candidate_sha256": candidate_sha}
+    report = paired_report(before, after, gates)
+    report["inference"]["torch"] = str(torch.__version__)
+    return {**report, "changes": changes, "candidate_sha256": candidate_sha}

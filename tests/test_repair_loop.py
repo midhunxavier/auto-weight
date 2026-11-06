@@ -158,12 +158,12 @@ def test_timeout_keeps_error_report_and_removes_partial_candidate(tmp_path, monk
     workspace = tmp_path / "repair"
     runner.initialize(tmp_path / "issue.json", workspace)
 
-    def time_out(args, **kwargs):
-        assert kwargs["timeout"] == 1
-        (Path(args[5]) / "model.npz").write_bytes(b"partial")
+    def time_out(args, timeout):
+        assert timeout == 1
+        (Path(args[2]) / "model.npz").write_bytes(b"partial")
         raise subprocess.TimeoutExpired(args, 1)
 
-    monkeypatch.setattr(runner.subprocess, "run", time_out)
+    monkeypatch.setattr(runner, "evaluate_worker", time_out)
     result = runner.attempt(workspace, tmp_path / "proposal.json")
     assert result["status"] == "error"
     assert "wall time" in result["error"]
