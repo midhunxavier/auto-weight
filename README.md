@@ -18,9 +18,15 @@ This was a controlled experiment on synthetic orders. Codex used a related check
 
 ## Try it
 
-- **Install the Python tools.** Use a wheel to install the CLI and local server. [Python runtime setup](docs/06-cli-and-mcp.md#install-the-python-runtime)
-- **Run the demo.** Start with DistilGPT2 and reproduce a repair with the included examples. [DistilGPT2 quickstart](examples/distilgpt2-quickstart/README.md)
-- **Repair your own model.** Set up AutoWeight Editor in Codex or Claude Code. Bring a local Hugging Face causal language model with safetensors weights and a tokenizer. Make two sets of prompts and expected answers. One guides the edits, and the other is held back for the final check. [Plugin setup](plugins/autoweight-editor/README.md) · [Example format](docs/12-hugging-face.md)
+Install the Python wheel and run the offline demo. [Wheel setup](docs/06-cli-and-mcp.md#install-the-python-runtime)
+
+```sh
+auto-weight demo
+```
+
+The demo creates a tiny synthetic Hugging Face checkpoint locally. It tests two scripted edits, rejects the first, and confirms and exports the second. It prints both scores and the model path under `runs/demo-<id>/`. The repair runs offline once the Python dependencies are installed.
+
+**Repair your own model.** Run `auto-weight setup-runtime` with your input directory, then load AutoWeight in Codex or Claude Code. Bring a local Hugging Face causal language model with safetensors weights and a tokenizer. Make two sets of prompts and expected answers. One guides the edits, and the other is held back for the final check. [Configure the runtime](docs/06-cli-and-mcp.md#configure-the-local-mcp-runtime) · [Load the plugin](plugins/auto-weight/README.md#load-the-plugin) · [Example format](docs/12-hugging-face.md)
 
 Once you’ve prepared the inputs, ask your agent:
 
@@ -30,8 +36,9 @@ AutoWeight returns a report for each attempt. A passing final check also gives y
 
 ## Go deeper
 
+- [Five end-to-end cases with Codex and Claude Code](examples/agent-repairs/README.md) · [When AutoWeight helps with checkpoint repair](docs/blog/auto-weight-checkpoint-repair.md)
 - [Run automatic repair from the terminal with Ollama](docs/13-automatic-repair.md)
 - [Review proposals yourself with the CLI](docs/06-cli-and-mcp.md#review-proposals-yourself)
-- [See more repairs](examples/json-repair/README.md) · [Repair copying in a small transformer](examples/copy-repair/README.md)
+- [Reproduce the DistilGPT2 experiment](examples/distilgpt2-quickstart/README.md) · [See more repairs](examples/json-repair/README.md) · [Repair copying in a small transformer](examples/copy-repair/README.md)
 - [Explore the architecture](docs/03-architecture.md) · [See how edits are evaluated](docs/05-evaluation-protocol.md) · [Browse the documentation](docs/)
 - [Read Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/) · [Explore the companion research repo](https://github.com/midhunxavier/weight-space-programming)

@@ -2,71 +2,74 @@
 
 ## Install the Python runtime
 
-Use Python 3.11 or newer on macOS or Linux. From a checkout, build the wheel with `uv build --wheel`. If you already have the wheel, install it directly. Replace the path below with the path to your wheel.
+The CLI and AutoWeight plugin use the same Python wheel. Use Python 3.11 or newer on macOS or Linux. From the repository root, build and install it with uv.
 
 ```sh
-uv tool install './dist/weight_edit_toolkit-0.4.0-py3-none-any.whl[hf,mcp]'
+uv build --wheel
+uv tool install './dist/auto_weight-0.4.0-py3-none-any.whl[hf,mcp]'
 ```
 
-If you use pip, run `python -m pip install './dist/weight_edit_toolkit-0.4.0-py3-none-any.whl[hf,mcp]'` inside an activated virtual environment. Both installs provide `weight-edit` and `weight-edit-mcp`.
+If you already have a wheel, skip the build and use its path. To install with pip, run `python -m pip install './dist/auto_weight-0.4.0-py3-none-any.whl[hf,mcp]'` inside an activated virtual environment. Both installs provide `auto-weight` and `auto-weight-mcp`.
 
-Point AutoWeight at an existing folder containing your checkpoints and evaluation files.
+You can now run `auto-weight demo` or repair a model from the terminal. CLI repair commands take their input paths directly. [Automatic repair](13-automatic-repair.md) · [Manual proposal workflow](#review-proposals-yourself)
+
+## Configure the local MCP runtime
+
+For Codex, Claude Code, or another MCP client, run this command using the same wheel installation. Replace the input path with an existing directory containing your checkpoint, evaluation files, and any donors. The server accepts input paths within that directory.
 
 ```sh
-weight-edit setup-runtime --input-root ~/model-repair
+auto-weight setup-runtime --input-root ~/model-repair
 ```
 
-The command starts the local MCP server, lists its tools, and saves the interpreter and paths to `~/.config/autoweight/editor.conf` after the check succeeds. Use `--runs-dir` to choose where repairs are saved. The default is `~/.local/share/autoweight/runs`. Set `AUTOWEIGHT_CONFIG` to use a separate config file.
+The command starts the local MCP server, lists its tools, and saves the interpreter and paths to `~/.config/auto-weight/editor.conf` after the check succeeds. Use `--runs-dir` to choose where repairs are saved. The default is `~/.local/share/auto-weight/runs`. Set `AUTOWEIGHT_CONFIG` to use a separate config file and pass the same setting to your MCP client.
 
-An MCP client can start `weight-edit-mcp` using the saved paths. Pass `--input-root` and optionally `--runs-dir` to choose paths for a single server launch. The CLI repair commands take their own input paths.
+If you installed a previous build, run `auto-weight setup-runtime` from the new installation and reload the plugin from the renamed marketplace. Pass `--runs-dir` to keep using an existing run directory.
 
-You can now [run a repair from the terminal](13-automatic-repair.md) or [review proposals yourself](#review-proposals-yourself).
+The plugin launcher uses the saved interpreter and paths. Other MCP clients can start the installed `auto-weight-mcp` command as a local stdio server. Pass `--input-root` and optionally `--runs-dir` to choose paths for a single server launch. [Load the plugin](../plugins/auto-weight/README.md#load-the-plugin)
 
 ## Commands
 
 | Command | Inputs | Result |
 |---|---|---|
-| `weight-edit setup-runtime` | Local input folder and optional runs directory | Check the local MCP server and write the runtime config |
-| `weight-edit repair` | Local Hugging Face model, issue, split datasets and optional donors | Ask a local Ollama model for edits and confirm the first eligible candidate |
-| `weight-edit setup` | Local Hugging Face model, datasets, and gates | Freeze a workspace and return the base digest and issue record path |
-| `weight-edit tensors` | `--checkpoint DIR`, optional `--prefix` and `--limit` | List stored tensor names, shapes, and dtypes |
-| `weight-edit fingerprint` | `--checkpoint FILE_OR_DIR` | SHA-256 identity for an input checkpoint |
-| `weight-edit init` | `--issue FILE --workspace NEW_DIR` | Frozen base, evaluation sets, runtime, budget and issue identity |
-| `weight-edit try` | `--proposal FILE --workspace DIR` | `eligible`, `discarded` or `error` with a numbered attempt report |
-| `weight-edit finalize` | `--attempt NNN --workspace DIR` | `accepted`, `discarded` or `error` with a confirmation report |
-| `weight-edit verify` | `--workspace DIR` | Integrity check and accepted checkpoint path, when present |
+| `auto-weight demo` | Optional new `--workspace` directory | Try two scripted edits on a tiny local model and export the passing checkpoint |
+| `auto-weight setup-runtime` | Local input folder and optional runs directory | Check the local MCP server and write the runtime config |
+| `auto-weight repair` | Local Hugging Face model, issue, split datasets and optional donors | Ask a local Ollama model for edits and confirm the first eligible candidate |
+| `auto-weight setup` | Local Hugging Face model, datasets, and gates | Freeze a workspace and return the base digest and issue record path |
+| `auto-weight tensors` | `--checkpoint DIR`, optional `--prefix` and `--limit` | List stored tensor names, shapes, and dtypes |
+| `auto-weight fingerprint` | `--checkpoint FILE_OR_DIR` | SHA-256 identity for an input checkpoint |
+| `auto-weight init` | `--issue FILE --workspace NEW_DIR` | Frozen base, evaluation sets, runtime, budget and issue identity |
+| `auto-weight try` | `--proposal FILE --workspace DIR` | `eligible`, `discarded` or `error` with a numbered attempt report |
+| `auto-weight finalize` | `--attempt NNN --workspace DIR` | `accepted`, `discarded` or `error` with a confirmation report |
+| `auto-weight verify` | `--workspace DIR` | Integrity check and accepted checkpoint path, when present |
 
-Use [automatic repair](13-automatic-repair.md) to run the proposal loop in one command. For manual review, an LLM with CLI access can write a proposal file, run `try`, and read the JSON result. Compare the individual gate deltas and bounds when deciding what to try next. After selecting an eligible attempt, run `finalize` once. Normal evaluation decisions exit zero, including a discard. Invalid input and evaluator errors exit one.
+Use [automatic repair](13-automatic-repair.md) to run the proposal loop in one command. For manual review, an LLM with CLI access can write a proposal file, run `try`, and read the JSON result. Compare the individual gate deltas and bounds when deciding what to try next. After selecting an eligible attempt, run `finalize` once. Normal evaluation decisions exit zero, including a discard. Invalid input and evaluator errors exit one. Automatic repair also exits one if it exhausts the proposal budget without scoring a candidate.
 
-Development reports live under `attempts/NNN/result/report.json`. Confirmation lives under `confirmation/result/`. An accepted result directory contains either the Hugging Face `model/` directory or `model.npz` alongside `report.json`. The report includes the model adapter and configuration needed for loading, base and candidate hashes, changed tensors, and metric results. `verify` checks the workspace and its records. The [AutoWeight Editor plugin](../plugins/autoweight-editor/README.md) exposes the same runner through local MCP for Codex and Claude Code.
+Development reports live under `attempts/NNN/result/report.json`. Confirmation lives under `confirmation/result/`. An accepted result directory contains either the Hugging Face `model/` directory or `model.npz` alongside `report.json`. The report includes the model adapter and configuration needed for loading, base and candidate hashes, changed tensors, and metric results. `verify` checks the workspace and its records. The [AutoWeight plugin](../plugins/auto-weight/README.md) exposes the same runner through local MCP for Codex and Claude Code.
 
 ## Review proposals yourself
 
-From the repository root, use Python 3.11 or newer on macOS or Linux.
+Use the `auto-weight` command from your wheel installation. Create a parent directory for your runs.
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[hf,mcp]'
 mkdir -p runs
 ```
 
 Give the toolkit a local Hugging Face checkpoint, separate development and confirmation files, and the checks you want it to pass.
 
 ```sh
-weight-edit setup --workspace runs/repair-001 --base ./my-model \
+auto-weight setup --workspace runs/repair-001 --base ./my-model \
   --development dev.jsonl --confirmation holdout.jsonl --prompt-format chat \
   --issue "Recover raw JSON and preserve the fulfillment policy" \
   --improve api json_exact 0.50 0.90 --preserve policy text_exact -0.10 0.90
-weight-edit tensors --checkpoint runs/repair-001/base --limit 30
+auto-weight tensors --checkpoint runs/repair-001/base --limit 30
 ```
 
 Give the proposing LLM the issue record, development examples, parameter names, and compatible donor checkpoints you want it to use. Have it write a [proposal record](04-patch-contract.md) and use the development report to decide what to try next. Select an eligible attempt for one confirmation run.
 
 ```sh
-weight-edit try --proposal proposal.json --workspace runs/repair-001
-weight-edit finalize --attempt 001 --workspace runs/repair-001
-weight-edit verify --workspace runs/repair-001
+auto-weight try --proposal proposal.json --workspace runs/repair-001
+auto-weight finalize --attempt 001 --workspace runs/repair-001
+auto-weight verify --workspace runs/repair-001
 ```
 
 ## Load an accepted model
@@ -81,8 +84,8 @@ from pathlib import Path
 
 import torch
 
-from weight_edit_toolkit.evaluate import load_state
-from weight_edit_toolkit.model import TinyTransformer
+from auto_weight.evaluate import load_state
+from auto_weight.model import TinyTransformer
 
 result = Path("runs/repair-001/confirmation/result")
 report = json.loads((result / "report.json").read_text())

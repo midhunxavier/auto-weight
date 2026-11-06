@@ -9,8 +9,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from prepare_policy_repair import changed_names
 from train_json_regression import save, train
-from weight_edit_toolkit.checkpoint import HF_ADAPTER, checkpoint_hash
-from weight_edit_toolkit.contracts import write_json
+from auto_weight.checkpoint import HF_ADAPTER, checkpoint_hash
+from auto_weight.contracts import write_json
 
 PRIORITIES = ("high", "low", "normal")
 QUEUES = ("billing", "shipping", "support")

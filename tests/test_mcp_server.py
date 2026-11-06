@@ -2,6 +2,7 @@
 import asyncio
 import json
 from pathlib import Path
+import shutil
 import sys
 
 import pytest
@@ -12,8 +13,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from test_hf_repair import make_checkpoint_pair
-from weight_edit_toolkit import runtime
-from weight_edit_toolkit.cli import main
+from auto_weight import runtime
+from auto_weight.cli import main
 
 
 def test_setup_runtime_updates_config_only_after_server_check(tmp_path, monkeypatch, capsys):
@@ -58,11 +59,16 @@ def test_stdio_repair_respects_run_boundaries(tmp_path):
     outside = tmp_path / "outside.jsonl"
     outside.write_text("not authorized")
     (inputs / "escape.jsonl").symlink_to(outside)
+    (inputs / "invalid.jsonl").write_text('{"HOLDOUT_ONLY":1,"HOLDOUT_ONLY":2}\n')
+    shutil.copytree(inputs / "donor", inputs / "incompatible")
+    config_path = inputs / "incompatible/config.json"
+    config = json.loads(config_path.read_text())
+    config_path.write_text(json.dumps({**config, "n_head": 1}))
 
     async def exercise():
         source = Path(__file__).resolve().parents[1] / "src"
         parameters = StdioServerParameters(
-            command=sys.executable, args=["-m", "weight_edit_toolkit.mcp_server",
+            command=sys.executable, args=["-m", "auto_weight.mcp_server",
                                          "--input-root", str(inputs), "--runs-dir", str(tmp_path / "runs")],
             env={"PYTHONPATH": str(source)},
         )
@@ -89,16 +95,33 @@ def test_stdio_repair_respects_run_boundaries(tmp_path):
                 denied = await client.call_tool("create_run", {**issue, "development": "escape.jsonl"})
                 assert denied.isError
                 assert "outside the configured input root" in str(denied.content)
+                invalid = await client.call_tool("create_run", {**issue, "confirmation": "invalid.jsonl"})
+                assert invalid.isError
+                assert "confirmation dataset: line 1" in str(invalid.content)
+                assert "HOLDOUT_ONLY" not in str(invalid.content)
+                incompatible = await client.call_tool("create_run", {**issue, "donors": ["incompatible"]})
+                assert incompatible.isError
+                assert "donor architecture config differs from base" in str(incompatible.content)
+                assert not list((tmp_path / "runs").iterdir())
                 run = await call("create_run", **issue)
                 run_id = run["run_id"]
+                workspace = tmp_path / "runs" / run_id
+                donors = list((workspace / "donors").iterdir())
+                assert len(donors) == 1
+                shutil.rmtree(inputs / "donor")
                 targets = await call("list_targets", run_id=run_id, donor_id="donor1")
                 assert [tensor["name"] for tensor in targets["tensors"]] == ["lm_head.weight"]
-                bad = await call("try_edit", run_id=run_id, op="scale", amount=0.5,
-                                 target="lm_head.weight", hypothesis="Reduce output projection magnitude.")
+                bad = await call("try_edit", run_id=run_id, op="blend", amount=0.2, donor_id="donor1",
+                                 target="changed", hypothesis="Blend a small fraction of the earlier readout.")
                 assert bad["status"] == "discarded"
                 good = await call("try_edit", run_id=run_id, op="restore", target="changed",
                                   donor_id="donor1", hypothesis="Restore the earlier readout.")
                 assert good["status"] == "eligible"
+                for trial in (bad, good):
+                    attempt_dir = workspace / "attempts" / trial["attempt"]
+                    assert {path.name for path in attempt_dir.iterdir()} == {"proposal.json", "result"}
+                    proposal = json.loads((attempt_dir / "proposal.json").read_text())
+                    assert (attempt_dir / proposal["operations"][0]["donor"]["path"]).resolve() == donors[0].resolve()
                 exhausted = await client.call_tool("try_edit", {"run_id": run_id, "op": "restore",
                     "target": "changed", "donor_id": "donor1", "hypothesis": "Attempt after the limit."})
                 assert exhausted.isError

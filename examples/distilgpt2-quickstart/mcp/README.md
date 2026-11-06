@@ -1,6 +1,6 @@
-# AutoWeight Editor client validation
+# AutoWeight client validation
 
-Both live sessions used the packaged `weight-edit` skill and the same local MCP server. Codex CLI 0.165.0 loaded the plugin from the AutoWeight local marketplace. Claude Code 2.1.318 loaded it with `--plugin-dir`. The agents received the same task and file names. They used separate repair runs, with no proposals supplied in the input folder.
+Both live sessions used the packaged repair skill and the same local MCP server. Codex CLI 0.165.0 loaded the plugin from the AutoWeight local marketplace. Claude Code 2.1.318 loaded it with `--plugin-dir`. The agents received the same task and file names. They used separate repair runs, with no proposals supplied in the input folder.
 
 The available inputs were the regressed DistilGPT2 checkpoint, its earlier donor, and the two JSONL files from the [DistilGPT2 quickstart](../README.md). The prompt asked each agent to recover raw priority JSON, preserve queue extraction, and use raw prompts with a 24-token generation limit. Neither agent was given a target tensor or a blend amount. Both received development examples through MCP. Confirmation responses contained scores and the exported path.
 
@@ -16,4 +16,4 @@ Each agent called confirmation once, then verified its run. Both exports have th
 
 The stdio integration test also checks a rejected edit, exhausted attempts, rejection of a second confirmation, and rejection of a path that escapes the configured input folder through a symlink.
 
-[Install AutoWeight Editor](../../../plugins/autoweight-editor/README.md)
+[Install AutoWeight](../../../plugins/auto-weight/README.md)
