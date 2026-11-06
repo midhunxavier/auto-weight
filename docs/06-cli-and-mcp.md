@@ -2,20 +2,29 @@
 
 ## Install the Python runtime
 
-The CLI and AutoWeight plugin use the same Python wheel. Use Python 3.11 or newer on macOS or Linux. From the repository root, build and install it with uv.
+Use Python 3.11 or newer on macOS or Linux. Install the CLI and MCP server from PyPI. [PyPI package](https://pypi.org/project/auto-weight/)
 
 ```sh
-uv build --wheel
-uv tool install './dist/auto_weight-0.4.0-py3-none-any.whl[hf,mcp]'
+uv tool install 'auto-weight[hf,mcp]'
 ```
 
-If you already have a wheel, skip the build and use its path. To install with pip, run `python -m pip install './dist/auto_weight-0.4.0-py3-none-any.whl[hf,mcp]'` inside an activated virtual environment. Both installs provide `auto-weight` and `auto-weight-mcp`.
+For pip, run `python -m pip install 'auto-weight[hf,mcp]'` inside an activated virtual environment. Both installs provide `auto-weight` and `auto-weight-mcp`. If your shell cannot find the commands after a uv install, run `uv tool update-shell` and open a new terminal. With pip, activate the environment in each terminal where you use the CLI.
 
 You can now run `auto-weight demo` or repair a model from the terminal. CLI repair commands take their input paths directly. [Automatic repair](13-automatic-repair.md) · [Manual proposal workflow](#review-proposals-yourself)
 
+### Install from a checkout
+
+For features added since PyPI 0.4.0, install from the repository root and use the plugin from the same checkout.
+
+```sh
+uv tool install --from '.[hf,mcp]' auto-weight
+```
+
+With pip, run `python -m pip install '.[hf,mcp]'` in an activated virtual environment.
+
 ## Configure the local MCP runtime
 
-For Codex, Claude Code, or another MCP client, run this command using the same wheel installation. Replace the input path with an existing directory containing your checkpoint, evaluation files, and any donors. The server accepts input paths within that directory.
+For Codex, Claude Code, or another MCP client, run this command using the installed CLI. Replace the input path with an existing directory containing your checkpoint, evaluation files, and any donors. The server accepts input paths within that directory.
 
 ```sh
 auto-weight setup-runtime --input-root ~/model-repair
@@ -23,11 +32,13 @@ auto-weight setup-runtime --input-root ~/model-repair
 
 The command starts the local MCP server, lists its tools, and saves the interpreter and paths to `~/.config/auto-weight/editor.conf` after the check succeeds. Use `--runs-dir` to choose where repairs are saved. The default is `~/.local/share/auto-weight/runs`. Set `AUTOWEIGHT_CONFIG` to use a separate config file and pass the same setting to your MCP client.
 
-If you installed a previous build, run `auto-weight setup-runtime` from the new installation and reload the plugin from the renamed marketplace. Pass `--runs-dir` to keep using an existing run directory.
+When switching installations, run `auto-weight setup-runtime` again and reload the matching plugin. Pass `--runs-dir` to keep using an existing run directory.
 
 The plugin launcher uses the saved interpreter and paths. Other MCP clients can start the installed `auto-weight-mcp` command as a local stdio server. Pass `--input-root` and optionally `--runs-dir` to choose paths for a single server launch. [Load the plugin](../plugins/auto-weight/README.md#load-the-plugin)
 
 ## Commands
+
+`prepare`, `baseline`, `read-tensor`, and `submit` were added after PyPI 0.4.0. [Install from a checkout](#install-from-a-checkout)
 
 | Command | Inputs | Result |
 |---|---|---|
@@ -64,7 +75,7 @@ The MCP server offers `prepare_evals`, `create_run`, `list_targets`, `read_tenso
 
 ## Review proposals yourself
 
-Use the `auto-weight` command from your wheel installation. Create a parent directory for your runs.
+Create a parent directory for your runs.
 
 ```sh
 mkdir -p runs

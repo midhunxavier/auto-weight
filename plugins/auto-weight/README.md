@@ -4,11 +4,18 @@ Repair a local Hugging Face model from Codex or Claude Code. The shared `auto-we
 
 ## Set up the local runtime
 
-Install the shared Python wheel with the `[hf,mcp]` extras, then run `auto-weight setup-runtime --input-root /path/to/repair-inputs` with your existing input directory. Once it reports `ready`, the plugin can use the saved interpreter and paths. [Wheel installation](../../docs/06-cli-and-mcp.md#install-the-python-runtime) · [MCP runtime configuration](../../docs/06-cli-and-mcp.md#configure-the-local-mcp-runtime)
+Install `auto-weight[hf,mcp]` from PyPI, then run `auto-weight setup-runtime --input-root /path/to/repair-inputs` with your existing input directory. Once it reports `ready`, the plugin can use the saved interpreter and paths. [Install the Python runtime](../../docs/06-cli-and-mcp.md#install-the-python-runtime) · [MCP runtime configuration](../../docs/06-cli-and-mcp.md#configure-the-local-mcp-runtime)
 
 ## Load the plugin
 
-Run the command for your host from the repository root.
+Use the repository tag that matches your PyPI installation. For example, with version 0.4.0, clone the release tag and enter the checkout.
+
+```sh
+git clone --branch v0.4.0 https://github.com/midhunxavier/auto-weight.git
+cd auto-weight
+```
+
+If you installed the runtime from source, use that same checkout. Run the command for your host from the repository root.
 
 **Codex.** Add this repository as a local marketplace and install AutoWeight. Start a fresh Codex session and invoke `$auto-weight`. The desktop app can also discover it through the AutoWeight repository marketplace. [OpenAI Docs for local marketplaces](https://developers.openai.com/plugins/build/plugins)
 

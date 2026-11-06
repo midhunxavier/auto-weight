@@ -1,12 +1,71 @@
 # AutoWeight
 
-**Edit your model’s weights with an LLM.**
+**Repair fine-tuning regressions in local Hugging Face models.**
 
-Tell Codex or Claude Code what to fix and what should keep working. The agent proposes weight edits. AutoWeight tests each edit on a copy of your model and saves a new checkpoint only if it passes your checks on fresh examples.
+Tell Codex, Claude Code, or a local Ollama model what to fix and what to preserve. AutoWeight tests proposed weight edits on development examples, then exports a new Transformers checkpoint if the selected edit passes a separate confirmation set.
 
-## A fine-tune broke JSON. Rolling back erased the new policy.
+## Install and try it
 
-We fine-tuned SmolLM2 to learn an order fulfillment policy. It learned the policy, but started wrapping JSON in Markdown fences, breaking the parser. Rolling back fixed the JSON and erased the policy. A weight edit proposed by Codex passed both checks.
+Use Python 3.11 or newer on macOS or Linux. Install from PyPI and run the demo from any directory. [PyPI package](https://pypi.org/project/auto-weight/)
+
+```sh
+uv tool install 'auto-weight[hf,mcp]'
+auto-weight demo
+```
+
+Using pip? Create a virtual environment first.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install 'auto-weight[hf,mcp]'
+auto-weight demo
+```
+
+The demo creates a tiny model locally and runs two scripted edits on CPU. It works offline after installation. The final JSON reports `"status": "accepted"` and an exported `checkpoint` path under `runs/demo-<id>/`. On the confirmation set, correct JSON goes from 0/32 to 32/32 while queue extraction stays at 32/32. [Installation and troubleshooting](docs/06-cli-and-mcp.md#install-the-python-runtime)
+
+## Repair your own model
+
+Put these inputs in a folder such as `repair-inputs/`.
+
+- `base/` contains a local Hugging Face causal language model with safetensors weights, config, and tokenizer.
+- `development.jsonl` and `confirmation.jsonl` contain labeled prompts for the behavior to fix and the behaviors to preserve. Use at least 32 examples per checked group in each file, and keep confirmation examples out of the proposer's context. [JSONL examples](docs/12-hugging-face.md)
+- Optionally, add a compatible earlier checkpoint as a donor so the proposer can restore or blend weights.
+
+### With Codex or Claude Code
+
+Point the installed runtime at your input folder.
+
+```sh
+auto-weight setup-runtime --input-root ./repair-inputs
+```
+
+Once setup reports `ready`, load the plugin from the repository tag that matches your installed version. [Codex and Claude Code setup](plugins/auto-weight/README.md#load-the-plugin)
+
+Ask your agent for a repair.
+
+> Fix the fenced JSON responses from `base` and preserve queue extraction. The improvement group is `fix`. Use `development.jsonl` to try edits and reserve `confirmation.jsonl` for the final check. Export the repaired checkpoint if it passes.
+
+### From the terminal
+
+Start Ollama and install a proposer model before running the command. It uses the `fix` group to measure improvement. [Ollama setup](docs/13-automatic-repair.md)
+
+```sh
+auto-weight repair --base ./repair-inputs/base \
+  --development ./repair-inputs/development.jsonl \
+  --confirmation ./repair-inputs/confirmation.jsonl \
+  --issue "Restore raw JSON and preserve queue extraction"
+```
+
+You can also review and confirm proposals yourself. [Manual proposal workflow](docs/06-cli-and-mcp.md#review-proposals-yourself)
+
+### Load the repaired model
+
+An accepted run includes a confirmation report and the path to a complete checkpoint you can load with `from_pretrained()`. [Transformers loading example](docs/12-hugging-face.md)
+
+## A real repair
+
+We fine-tuned SmolLM2 on a synthetic order fulfillment policy. It learned the policy and started wrapping JSON in Markdown fences, breaking the parser. Rolling back fixed the JSON and erased the policy. A weight edit proposed by Codex used a related checkpoint and passed both checks without further training. [Reproduce the experiment](examples/policy-repair/README.md)
 
 | On fresh examples | Correct raw JSON | Correct policy decisions |
 | --- | ---: | ---: |
@@ -14,32 +73,9 @@ We fine-tuned SmolLM2 to learn an order fulfillment policy. It learned the polic
 | Full rollback | 96/96 | 0/96 |
 | Accepted weight edit | **96/96** | **96/96** |
 
-This was a controlled experiment on synthetic orders. Codex used a related checkpoint to build the edit, and the repair ran without further training. [Read the experiment and replay it](examples/policy-repair/README.md)
+## Examples and documentation
 
-## Try it
-
-Install the Python wheel and run the offline demo. [Wheel setup](docs/06-cli-and-mcp.md#install-the-python-runtime)
-
-```sh
-auto-weight demo
-```
-
-The demo creates a tiny synthetic Hugging Face checkpoint locally. It tests two scripted edits, rejects the first, and confirms and exports the second. It prints both scores and the model path under `runs/demo-<id>/`. The repair runs offline once the Python dependencies are installed.
-
-**Repair your own model.** Run `auto-weight setup-runtime` with your input directory, then load AutoWeight in Codex or Claude Code. Bring a local Hugging Face causal language model with safetensors weights and a tokenizer. Make two sets of prompts and expected answers. One guides the edits, and the other is held back for the final check. [Configure the runtime](docs/06-cli-and-mcp.md#configure-the-local-mcp-runtime) · [Load the plugin](plugins/auto-weight/README.md#load-the-plugin) · [Example format](docs/12-hugging-face.md)
-
-Once you’ve prepared the inputs, ask your agent:
-
-> Fix the fenced JSON responses from `base`. Keep the fulfillment policy working. Use `development.jsonl` to try edits and `confirmation.jsonl` for the final check. Save the repaired checkpoint if it passes both checks.
-
-AutoWeight returns a report for each attempt. A passing final check also gives you a model directory you can load with Transformers. [Load the repaired model](docs/06-cli-and-mcp.md#load-an-accepted-model)
-
-## Go deeper
-
-- [Five end-to-end cases with Codex and Claude Code](examples/agent-repairs/README.md) · [When AutoWeight helps with checkpoint repair](docs/blog/auto-weight-checkpoint-repair.md)
-- [Prepare labeled evaluation data](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Weight-space examples](examples/weight-space/README.md)
-- [Run automatic repair from the terminal with Ollama](docs/13-automatic-repair.md)
-- [Review proposals yourself with the CLI](docs/06-cli-and-mcp.md#review-proposals-yourself)
-- [Reproduce the DistilGPT2 experiment](examples/distilgpt2-quickstart/README.md) · [See more repairs](examples/json-repair/README.md) · [Repair copying in a small transformer](examples/copy-repair/README.md)
-- [Explore the architecture](docs/03-architecture.md) · [See how edits are evaluated](docs/05-evaluation-protocol.md) · [Browse the documentation](docs/)
-- [Read Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/) · [Explore the companion research repo](https://github.com/midhunxavier/weight-space-programming)
+- [Five end-to-end repairs with Codex and Claude Code](examples/agent-repairs/README.md) · [DistilGPT2 walkthrough](examples/distilgpt2-quickstart/README.md) · [JSON repair](examples/json-repair/README.md) · [Small-transformer copying repair](examples/copy-repair/README.md)
+- The source checkout includes evaluation preparation and external evaluators. [Install from a checkout](docs/06-cli-and-mcp.md#install-from-a-checkout) · [Prepare labeled evaluation data](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Weight-space examples](examples/weight-space/README.md)
+- [When checkpoint repair helps](docs/blog/auto-weight-checkpoint-repair.md) · [Evaluation protocol](docs/05-evaluation-protocol.md) · [Architecture](docs/03-architecture.md) · [All documentation](docs/)
+- [Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/) · [Companion research repository](https://github.com/midhunxavier/weight-space-programming)
