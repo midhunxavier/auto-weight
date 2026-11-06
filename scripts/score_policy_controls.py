@@ -7,11 +7,11 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer
 
-from weight_edit_toolkit import text_eval
-from weight_edit_toolkit.checkpoint import HF_ADAPTER, checkpoint_hash
-from weight_edit_toolkit.contracts import write_json
-from weight_edit_toolkit.hf import load_model
-from weight_edit_toolkit.runner import load_issue, verify
+from auto_weight import text_eval
+from auto_weight.checkpoint import HF_ADAPTER, checkpoint_hash
+from auto_weight.contracts import write_json
+from auto_weight.hf import load_model
+from auto_weight.runner import load_issue, verify
 
 
 def main():

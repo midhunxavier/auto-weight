@@ -1,20 +1,20 @@
 # Hugging Face checkpoint and text evaluation
 
-Install the [Python runtime](06-cli-and-mcp.md#install-the-python-runtime), or run `pip install -e '.[hf]'` from the repository root for development. Prepare a local Transformers causal language model directory with `config.json`, a fast `tokenizer.json` and `tokenizer_config.json`. The adapter accepts `model.safetensors` or standard safetensors shards with their index. It snapshots those assets plus recognized tokenizer files and generation metadata. The runner loads locally on CPU with remote code disabled. Prepare a dense checkpoint in a floating-point dtype with the model architecture available in Transformers.
+Install the Python wheel and prepare a local Transformers causal language model directory with `config.json`, a fast `tokenizer.json` and `tokenizer_config.json`. The adapter accepts `model.safetensors` or standard safetensors shards with their index. It snapshots those assets plus recognized tokenizer files and generation metadata. The runner loads locally on CPU with remote code disabled. Prepare a dense checkpoint in a floating-point dtype with the model architecture available in Transformers. [Wheel installation](06-cli-and-mcp.md#install-the-python-runtime)
 
 Use the [CLI setup command](06-cli-and-mcp.md#review-proposals-yourself) to create a frozen workspace directly from model and dataset paths. Each `--improve` or `--preserve` takes a group, a metric, the required improvement or allowed decline, and an optional absolute score floor. Repeat either flag to add another gate. For example, `--improve api json_exact 0.50 0.90` requires a 50 percentage point gain and at least 90% observed accuracy.
 
 `--prompt-format chat` wraps the prompt as a single user message with the checkpoint's saved chat template. The default `raw` tokenizes it directly. The evaluator left-pads batches, generates greedily, and decodes only new tokens with special tokens removed. Use `--max-new-tokens` to set the output cap. Prompts that exceed the input or context cap are rejected.
 
-Run `weight-edit tensors --checkpoint runs/repair-001/base --prefix model.layers.23.` to see stored tensor names, shapes, and dtypes without loading the model for inference. A tied parameter may have one stored name. Run `weight-edit fingerprint --checkpoint ./my-donor` to obtain the digest for a donor reference. Donors must match the architecture configuration, tokenizer files, and edited parameter shapes and dtypes.
+Run `auto-weight tensors --checkpoint runs/repair-001/base --prefix model.layers.23.` to see stored tensor names, shapes, and dtypes without loading the model for inference. A tied parameter may have one stored name. Run `auto-weight fingerprint --checkpoint ./my-donor` to obtain the digest for a donor reference. Donors must match the architecture configuration, tokenizer files, and edited parameter shapes and dtypes.
 
-To initialize from a complete [issue JSON](04-patch-contract.md), use `weight-edit init`. The equivalent model field is:
+To initialize from a complete [issue JSON](04-patch-contract.md), use `auto-weight init`. The equivalent model field is:
 
 ```json
 {"adapter":"hf-causal-lm-v1","config":{"prompt_format":"chat","max_input_tokens":128,"max_new_tokens":24}}
 ```
 
-Write development and confirmation files as JSONL with independent prompts. Include at least 32 rows per gated group in each split. The following lines show a JSON API check and a routing preservation check.
+Write development and confirmation files as JSONL with independent prompts. Include at least 32 rows per gated group in each split. Setup validates both splits, including their checks, token limits, and prompt overlap, before starting any trials. The following lines show a JSON API check and a routing preservation check.
 
 ```jsonl
 {"group":"api","prompt":"Return the ticket priority as a raw JSON object. Priority: high.","check":{"type":"json","expected":{"priority":"high"},"schema":{"type":"object","required":["priority"],"properties":{"priority":{"enum":["low","normal","high"]}},"additionalProperties":false}}}

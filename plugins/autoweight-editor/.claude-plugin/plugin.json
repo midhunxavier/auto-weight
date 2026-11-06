@@ -1,9 +1,0 @@
-{
-  "name": "autoweight-editor",
-  "displayName": "AutoWeight Editor",
-  "version": "0.1.0",
-  "description": "Propose, evaluate, and export repairs to local Hugging Face checkpoints.",
-  "author": {
-    "name": "AutoWeight contributors"
-  }
-}

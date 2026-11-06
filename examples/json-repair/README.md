@@ -39,11 +39,11 @@ hf download HuggingFaceTB/SmolLM2-135M-Instruct \
   --local-dir .artifacts/smollm2-135m
 python scripts/train_json_regression.py --source .artifacts/smollm2-135m --output runs/json-training
 python scripts/prepare_json_repair.py --training runs/json-training --output runs/json-inputs
-weight-edit init --issue runs/json-inputs/issue.json --workspace runs/json-repair
-weight-edit try --proposal runs/json-inputs/restore-norm.json --workspace runs/json-repair
-weight-edit try --proposal runs/json-inputs/blend-late-layers.json --workspace runs/json-repair
-weight-edit finalize --attempt 002 --workspace runs/json-repair
-weight-edit verify --workspace runs/json-repair
+auto-weight init --issue runs/json-inputs/issue.json --workspace runs/json-repair
+auto-weight try --proposal runs/json-inputs/restore-norm.json --workspace runs/json-repair
+auto-weight try --proposal runs/json-inputs/blend-late-layers.json --workspace runs/json-repair
+auto-weight finalize --attempt 002 --workspace runs/json-repair
+auto-weight verify --workspace runs/json-repair
 ```
 
 The accepted weights and tokenizer are under `runs/json-repair/confirmation/result/model/`. [Reload instructions](../../docs/12-hugging-face.md#hugging-face-checkpoint-and-text-evaluation)

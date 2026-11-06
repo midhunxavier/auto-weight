@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from weight_edit_toolkit.contracts import file_hash
+from auto_weight.contracts import file_hash
 
 
 def write_examples(path, seed, count, config):

@@ -10,7 +10,7 @@ Supply the following.
 - `--donor` is optional and repeatable. Offer an earlier compatible checkpoint to enable restores and blends. Scaling is available when you have only the base checkpoint.
 
 ```sh
-weight-edit repair --base ./my-model --issue "Return raw JSON and preserve queue answers" \
+auto-weight repair --base ./my-model --issue "Return raw JSON and preserve queue answers" \
   --development dev.jsonl --confirmation holdout.jsonl --donor ./earlier-checkpoint
 ```
 
@@ -27,7 +27,7 @@ The final JSON includes the outcome, workspace, and checkpoint path when accepte
 Prepare the two DistilGPT2 checkpoints and labeled datasets from the [DistilGPT2 walkthrough](../examples/distilgpt2-quickstart/README.md). Run the command below from the repository root. It uses the same confirmation split as the manual walkthrough, with confirmation data held out from the proposer.
 
 ```sh
-weight-edit repair --workspace runs/distilgpt2-one-command \
+auto-weight repair --workspace runs/distilgpt2-one-command \
   --base runs/distilgpt2-inputs/regressed \
   --development runs/distilgpt2-inputs/development.jsonl \
   --confirmation runs/distilgpt2-inputs/confirmation.jsonl \

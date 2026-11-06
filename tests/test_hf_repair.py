@@ -11,11 +11,11 @@ pytest.importorskip("jsonschema")
 from tokenizers import Tokenizer, models, pre_tokenizers
 from transformers import GPT2Config, GPT2LMHeadModel, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
 
-from weight_edit_toolkit import runner
-from weight_edit_toolkit.checkpoint import HF_ADAPTER, checkpoint_hash
-from weight_edit_toolkit.cli import main
-from weight_edit_toolkit.contracts import EditError, file_hash
-from weight_edit_toolkit.text_eval import compile_check
+from auto_weight import runner
+from auto_weight.checkpoint import HF_ADAPTER, checkpoint_hash
+from auto_weight.cli import main
+from auto_weight.contracts import EditError, file_hash
+from auto_weight.text_eval import compile_check
 
 
 def write_json(path, record):
@@ -138,8 +138,55 @@ def test_shard_index_cannot_reference_a_file_outside_checkpoint(tmp_path):
         checkpoint_hash(tmp_path, HF_ADAPTER)
 
 
-def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(tmp_path, capsys, monkeypatch):
-    from weight_edit_toolkit import automation
+@pytest.mark.parametrize(("problem", "message"), [
+    ("short", "confirmation dataset: gate fix/json_exact requires at least 32 examples"),
+    ("overlap", "development and confirmation prompts overlap after tokenization"),
+    ("chat", "chat prompt format requires a default tokenizer chat template"),
+    ("bad_check", "confirmation dataset: line 1: invalid check definition"),
+    ("long_prompt", "confirmation dataset: line 1: prompt has 9 tokens; max_input_tokens is 8"),
+])
+def test_repair_preflight_rejects_invalid_inputs_before_contacting_proposer(
+    tmp_path, capsys, monkeypatch, problem, message
+):
+    from auto_weight import automation
+
+    make_checkpoint_pair(tmp_path, "gpt2")
+    for stage, offset in (("development", 0), ("confirmation", 32)):
+        count = 1 if stage == "confirmation" and problem == "short" else 32
+        with (tmp_path / f"{stage}.jsonl").open("w") as stream:
+            for index in range(offset, offset + count):
+                prompt_index = 0 if index == 32 and problem == "overlap" else index
+                check = {"type": "json", "expected": {"ok": True}}
+                if index == 32 and problem == "bad_check":
+                    check["schema"] = {"type": "HOLDOUT_ONLY"}
+                for group, grade in (("fix", check), ("keep", {"type": "exact", "expected": "kept"})):
+                    prompt = f"case{prompt_index} {group}"
+                    if index == 32 and problem == "long_prompt":
+                        prompt = "HOLDOUT_ONLY " * 7 + prompt
+                    print(json.dumps({"group": group, "prompt": prompt, "check": grade}), file=stream)
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("preflight must finish before Ollama is contacted")
+
+    monkeypatch.setattr(automation, "ollama_request", unexpected_request)
+    workspace = tmp_path / "repair"
+    assert main([
+        "repair", "--workspace", str(workspace), "--base", str(tmp_path / "base"),
+        "--development", str(tmp_path / "development.jsonl"), "--confirmation", str(tmp_path / "confirmation.jsonl"),
+        "--issue", "Restore raw JSON.", "--max-input-tokens", "8",
+        "--prompt-format", "chat" if problem == "chat" else "raw",
+    ]) == 1
+    error = json.loads(capsys.readouterr().err)["error"]
+    assert message in error
+    assert "HOLDOUT_ONLY" not in error
+    assert not workspace.exists()
+
+
+@pytest.mark.parametrize("failed_evaluation", [False, True])
+def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(
+    tmp_path, capsys, monkeypatch, failed_evaluation
+):
+    from auto_weight import automation
 
     make_checkpoint_pair(tmp_path, "gpt2")
     for stage, offset in (("development", 0), ("confirmation", 32)):
@@ -152,10 +199,10 @@ def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(tmp_p
                                              "check": check}) + "\n")
 
     requests = []
-    choices = iter([
+    choices = [{"op": "scale", "amount": 1.0, "donor": "none"}] if failed_evaluation else [
         {"op": "scale", "amount": 0.5, "donor": "none"},
         {"op": "restore", "amount": 1, "donor": "donor1"},
-    ])
+    ]
 
     def local_model(path, *, body=None, timeout):
         if path == "/api/tags":
@@ -164,7 +211,8 @@ def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(tmp_p
         context = json.loads(body["messages"][1]["content"])
         assert "HOLDOUT_ONLY" not in json.dumps(body)
         requests.append(context)
-        response = {"hypothesis": "Adjust the output projection.", "target": "lm_head.weight", **next(choices)}
+        response = {"hypothesis": "Adjust the output projection.", "target": "lm_head.weight",
+                    **choices[len(requests) - 1]}
         return {"message": {"content": json.dumps(response)}}
 
     monkeypatch.setattr(automation, "ollama_request", local_model)
@@ -173,9 +221,16 @@ def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(tmp_p
         "repair", "--workspace", str(workspace), "--base", str(tmp_path / "base"),
         "--development", str(tmp_path / "development.jsonl"), "--confirmation", str(tmp_path / "confirmation.jsonl"),
         "--issue", "Repair JSON and keep the other answer.", "--donor", str(tmp_path / "donor"),
-        "--max-input-tokens", "8", "--max-new-tokens", "1", "--threads", "1", "--attempts", "2",
-    ]) == 0
+        "--max-input-tokens", "8", "--max-new-tokens", "1", "--threads", "1", "--attempts", str(len(choices)),
+    ]) == int(failed_evaluation)
     result = json.loads(capsys.readouterr().out)
+    if failed_evaluation:
+        assert result["status"] == "error"
+        assert "proposal changes no parameter values" in result["error"]
+        assert result["attempts"] == {"001": "error"}
+        assert result["confirmation"] is None
+        assert result["checkpoint"] is None
+        return
     assert result["attempts"] == {"001": "discarded", "002": "eligible"}
     assert result["confirmation"] == "accepted"
     assert Path(result["checkpoint"]).is_dir()
@@ -183,3 +238,20 @@ def test_repair_feeds_back_discard_and_keeps_confirmation_out_of_proposals(tmp_p
     assert requests[0]["previous_attempts"] == []
     assert requests[1]["previous_attempts"][0]["status"] == "discarded"
     assert requests[1]["previous_attempts"][0]["groups"]["fix"]["candidate"]["json_exact"] == 0
+
+
+def test_offline_demo_runs_and_exports_checkpoint(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    assert main(["demo"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    workspace = Path(result["workspace"])
+    assert workspace.parent == tmp_path.resolve() / "runs"
+    assert result["status"] == "accepted"
+    assert result["attempts"] == {"001": "discarded", "002": "eligible"}
+    assert result["confirmation_scores"] == {
+        "json": {"before": 0, "after": 32, "examples": 32},
+        "queue": {"before": 32, "after": 32, "examples": 32},
+    }
+    assert runner.verify(workspace)["checkpoint"] == result["checkpoint"]

@@ -1,0 +1,75 @@
+name: Wheel tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Distribution artifact containing the wheel to test
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    name: Wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel
+        if: inputs.artifact-name == ''
+        run: python -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/wheels" .
+
+      - name: Download the release wheel
+        if: inputs.artifact-name != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/wheels
+
+      - name: Create a fresh environment
+        run: python -m venv "$RUNNER_TEMP/auto-weight-venv"
+
+      - name: Install CPU PyTorch on Linux
+        if: runner.os == 'Linux'
+        run: |
+          "$RUNNER_TEMP/auto-weight-venv/bin/python" -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu 'torch>=2.5,<3'
+
+      - name: Install the wheel
+        run: |
+          wheels=("$RUNNER_TEMP/wheels"/auto_weight-*.whl)
+          python="$RUNNER_TEMP/auto-weight-venv/bin/python"
+          "$python" -m pip install "${wheels[0]}[hf,mcp,test]"
+          "$python" -m pip check
+
+      - name: Test the installed wheel outside the checkout
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: |
+          venv="$RUNNER_TEMP/auto-weight-venv"
+          test_dir="$RUNNER_TEMP/auto-weight-wheel-test"
+          mkdir -p "$test_dir/model inputs"
+          cp -R tests "$test_dir/tests"
+          cd "$test_dir"
+          unset PYTHONPATH
+          export AUTOWEIGHT_CONFIG="$PWD/editor.conf"
+          "$venv/bin/auto-weight" setup-runtime --input-root "$PWD/model inputs" --runs-dir "$PWD/runs"
+          "$venv/bin/auto-weight" demo
+          "$venv/bin/python" -m pytest -q -ra tests

@@ -7,8 +7,8 @@ from pathlib import Path
 from safetensors import safe_open
 import torch
 
-from weight_edit_toolkit.checkpoint import HF_ADAPTER, checkpoint_hash
-from weight_edit_toolkit.contracts import file_hash
+from auto_weight.checkpoint import HF_ADAPTER, checkpoint_hash
+from auto_weight.contracts import file_hash
 
 
 def changed_names(base_path, donor_path):

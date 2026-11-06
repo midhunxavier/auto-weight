@@ -49,17 +49,17 @@ python scripts/train_policy_regression.py \
 python scripts/prepare_policy_repair.py \
   --training runs/policy-training --prior runs/smollm2-json-training/raw-json \
   --output runs/policy-inputs
-weight-edit init --issue runs/policy-inputs/issue.json --workspace runs/policy-repair
+auto-weight init --issue runs/policy-inputs/issue.json --workspace runs/policy-repair
 for proposal in rollback blend-50 blend-65 blend-80; do
-  weight-edit try --workspace runs/policy-repair --proposal "runs/policy-inputs/$proposal.json"
+  auto-weight try --workspace runs/policy-repair --proposal "runs/policy-inputs/$proposal.json"
 done
 python scripts/propose_policy_format_edit.py \
   --joint runs/policy-training/joint --prior runs/smollm2-json-training/raw-json \
   --fenced-reference runs/smollm2-json-training/fenced-json \
   --strength 1 --output runs/policy-format-edit
-weight-edit try --workspace runs/policy-repair --proposal runs/policy-format-edit/proposal.json
-weight-edit finalize --workspace runs/policy-repair --attempt 005
-weight-edit verify --workspace runs/policy-repair
+auto-weight try --workspace runs/policy-repair --proposal runs/policy-format-edit/proposal.json
+auto-weight finalize --workspace runs/policy-repair --attempt 005
+auto-weight verify --workspace runs/policy-repair
 python scripts/score_policy_controls.py \
   --workspace runs/policy-repair --prior runs/smollm2-json-training/raw-json \
   --output runs/policy-comparison.json

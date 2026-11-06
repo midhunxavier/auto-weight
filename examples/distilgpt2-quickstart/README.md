@@ -35,18 +35,17 @@ A Hugging Face JSONL file has one prompt and one check per line. Include at leas
 {"group":"queue","prompt":"Give the assigned queue only. Queue: billing.","check":{"type":"exact","expected":"billing"}}
 ```
 
-The proposal's `base_sha256` comes from the `setup` output. For a donor, run `weight-edit fingerprint --checkpoint /path/to/prior` and use the resulting digest. Relative donor paths resolve from the proposal file. For these saved proposal examples, the donor path is `prior` beside the proposal in the generated input directory.
+The proposal's `base_sha256` comes from the `setup` output. For a donor, run `auto-weight fingerprint --checkpoint /path/to/prior` and use the resulting digest. Relative donor paths resolve from the proposal file. For these saved proposal examples, the donor path is `prior` beside the proposal in the generated input directory.
 
 The supplied files preserve the exact prompts and expected outputs used in the experiment. The generator uses a fixed seed for each split and distinct ticket IDs, notes, and instruction templates. For your own repair, collect a fresh confirmation set and give the proposer the development set only.
 
 ## Reproduce the inputs
 
-Run these commands from the repository root in a fresh environment. Use `--device cpu` if Apple MPS is unavailable. Training used PyTorch 2.5.1 and Transformers 4.57.6. Setup and evaluation run locally on CPU.
+Build the wheel and use the pip installation option in a fresh virtual environment so the training script can import the installed package. Append `'torch==2.5.1' 'transformers==4.57.6'` to the pip command to match the experiment. [Wheel installation](../../docs/06-cli-and-mcp.md#install-the-python-runtime)
+
+Run these commands from the repository root with that environment active. Use `--device cpu` if Apple MPS is unavailable. Setup and evaluation run locally on CPU.
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[hf]' 'torch==2.5.1' 'transformers==4.57.6'
 mkdir -p runs
 hf download distilbert/distilgpt2 \
   --revision 2290a62682d06624634c1f46a6ad5be0f47f38aa \
@@ -61,18 +60,18 @@ The script creates the prior and regressed checkpoints and both JSONL files. It 
 ## Run the repair
 
 ```sh
-weight-edit setup --workspace runs/distilgpt2-repair --base runs/distilgpt2-inputs/regressed \
+auto-weight setup --workspace runs/distilgpt2-repair --base runs/distilgpt2-inputs/regressed \
   --development runs/distilgpt2-inputs/development.jsonl --confirmation runs/distilgpt2-inputs/confirmation.jsonl \
   --prompt-format raw --max-new-tokens 24 --batch-size 6 --threads 6 \
   --issue "Restore raw priority JSON and preserve queue extraction" \
   --improve api json_exact 0.50 0.90 --improve api schema_match 0.50 0.90 \
   --preserve queue text_exact -0.10 0.90
 
-weight-edit tensors --checkpoint runs/distilgpt2-repair/base --prefix transformer.ln_f.
-weight-edit try --workspace runs/distilgpt2-repair --proposal runs/distilgpt2-inputs/restore-norm.json
-weight-edit try --workspace runs/distilgpt2-repair --proposal runs/distilgpt2-inputs/blend.json
-weight-edit finalize --workspace runs/distilgpt2-repair --attempt 002
-weight-edit verify --workspace runs/distilgpt2-repair
+auto-weight tensors --checkpoint runs/distilgpt2-repair/base --prefix transformer.ln_f.
+auto-weight try --workspace runs/distilgpt2-repair --proposal runs/distilgpt2-inputs/restore-norm.json
+auto-weight try --workspace runs/distilgpt2-repair --proposal runs/distilgpt2-inputs/blend.json
+auto-weight finalize --workspace runs/distilgpt2-repair --attempt 002
+auto-weight verify --workspace runs/distilgpt2-repair
 ```
 
 `setup` freezes the inputs and prints the checkpoint hash. The JSON improvement gates require a paired improvement of at least 50 percentage points and a score of at least 90%. The preservation gate allows up to a 10 point decline and requires a score of at least 90%. Select an attempt marked `eligible` for the single confirmation run. The measured candidate was attempt 002.

@@ -9,8 +9,8 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from weight_edit_toolkit.contracts import file_hash
-from weight_edit_toolkit.model import TinyTransformer
+from auto_weight.contracts import file_hash
+from auto_weight.model import TinyTransformer
 
 
 def prepare(root, *, fail_confirmation=False, overlap=False, timeout=60):
@@ -59,7 +59,7 @@ def prepare(root, *, fail_confirmation=False, overlap=False, timeout=60):
 def cli(root, command, *args, code=0):
     src = Path(__file__).resolve().parents[1] / "src"
     process = subprocess.run(
-        [sys.executable, "-m", "weight_edit_toolkit", command, "--workspace", str(root / "repair"), *args],
+        [sys.executable, "-m", "auto_weight", command, "--workspace", str(root / "repair"), *args],
         cwd=root, env={**os.environ, "PYTHONPATH": str(src)}, capture_output=True, text=True, timeout=90,
     )
     assert process.returncode == code, process.stdout + process.stderr
@@ -74,9 +74,13 @@ def test_cli_replays_and_publishes_only_passing_checkpoint(tmp_path, fail_confir
     assert dev["status"] == "eligible"
     workspace = tmp_path / "repair"
     assert list((workspace / "attempts/001/result").iterdir()) == [workspace / "attempts/001/result/report.json"]
-    # Replay relies on the frozen donor.
+    # A second attempt and confirmation both use the frozen donor.
     (tmp_path / "donor.npz").unlink()
-    confirmation = cli(tmp_path, "finalize", "--attempt", "001")
+    again = cli(tmp_path, "try", "--proposal", "proposal.json")
+    assert again["status"] == "eligible"
+    assert again["evaluation"] == dev["evaluation"]
+    assert len(list((workspace / "donors").iterdir())) == 1
+    confirmation = cli(tmp_path, "finalize", "--attempt", "002")
     verify = cli(tmp_path, "verify")
     accepted = workspace / "confirmation/result/model.npz"
     assert confirmation["evaluation"]["candidate_sha256"] == dev["evaluation"]["candidate_sha256"]
@@ -85,6 +89,8 @@ def test_cli_replays_and_publishes_only_passing_checkpoint(tmp_path, fail_confir
     assert cli(tmp_path, "finalize", "--attempt", "001", code=1)["status"] == "error"
     assert cli(tmp_path, "try", "--proposal", "proposal.json", code=1)["status"] == "error"
     if fail_confirmation:
+        assert dev["evaluation"]["groups"]["fix"]["baseline"]["accuracy"] == 0
+        assert confirmation["evaluation"]["groups"]["fix"]["baseline"]["accuracy"] == 1
         assert verify["confirmation"] == "discarded"
         assert verify["checkpoint"] is None
     else:
@@ -92,6 +98,35 @@ def test_cli_replays_and_publishes_only_passing_checkpoint(tmp_path, fail_confir
         assert file_hash(accepted) == confirmation["evaluation"]["candidate_sha256"]
         accepted.write_bytes(b"damaged model")
         assert "hash mismatch" in cli(tmp_path, "verify", code=1)["error"]
+
+
+def test_development_baseline_skips_scoring_on_hit_and_rebuilds_invalid_cache(tmp_path):
+    from auto_weight.runner import BASELINE_NAME
+    from auto_weight.worker import development_baseline
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    frozen = {"id": "issue"}
+    expected = np.array([[1.0, 0.5], [0.0, 2.0]])
+    expected_samples = {"fix": ["before"]}
+
+    def score():
+        return {"fix": expected}, expected_samples
+
+    def unexpected_score():
+        pytest.fail("the baseline scorer ran despite a cache hit")
+
+    development_baseline(tmp_path, frozen, staging, score)
+    cache = tmp_path / BASELINE_NAME
+    (staging / BASELINE_NAME).replace(cache)
+    scores, samples = development_baseline(tmp_path, frozen, staging, unexpected_score)
+    np.testing.assert_array_equal(scores["fix"], expected)
+    assert samples == expected_samples
+    assert not (staging / BASELINE_NAME).exists()
+
+    cache.write_text("{}")
+    development_baseline(tmp_path, frozen, staging, score)
+    assert (staging / BASELINE_NAME).is_file()
 
 
 def test_overlapping_confirmation_is_consumed_without_export(tmp_path):
@@ -117,7 +152,7 @@ def test_modified_base_fails_closed(tmp_path):
 
 
 def test_timeout_keeps_error_report_and_removes_partial_candidate(tmp_path, monkeypatch):
-    from weight_edit_toolkit import runner
+    from auto_weight import runner
 
     prepare(tmp_path, timeout=1)
     workspace = tmp_path / "repair"

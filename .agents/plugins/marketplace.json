@@ -1,10 +1,10 @@
 {
-  "name": "autoweight",
+  "name": "auto-weight",
   "interface": {"displayName": "AutoWeight"},
   "plugins": [
     {
-      "name": "autoweight-editor",
-      "source": {"source": "local", "path": "./plugins/autoweight-editor"},
+      "name": "auto-weight",
+      "source": {"source": "local", "path": "./plugins/auto-weight"},
       "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
       "category": "Developer Tools"
     }

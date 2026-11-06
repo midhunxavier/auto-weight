@@ -30,9 +30,9 @@ python scripts/prepare_copy_repair.py \
   --base runs/specificity-validation-20261105/private/c002.npz \
   --donor runs/specificity-validation-20261105/private/c000.npz \
   --output runs/copy-repair-replay-inputs
-weight-edit init --issue runs/copy-repair-replay-inputs/issue.json --workspace runs/copy-repair-replay
-weight-edit try --proposal runs/copy-repair-replay-inputs/restore-output.json --workspace runs/copy-repair-replay
-weight-edit try --proposal runs/copy-repair-replay-inputs/blend-checkpoints.json --workspace runs/copy-repair-replay
-weight-edit finalize --attempt 002 --workspace runs/copy-repair-replay
-weight-edit verify --workspace runs/copy-repair-replay
+auto-weight init --issue runs/copy-repair-replay-inputs/issue.json --workspace runs/copy-repair-replay
+auto-weight try --proposal runs/copy-repair-replay-inputs/restore-output.json --workspace runs/copy-repair-replay
+auto-weight try --proposal runs/copy-repair-replay-inputs/blend-checkpoints.json --workspace runs/copy-repair-replay
+auto-weight finalize --attempt 002 --workspace runs/copy-repair-replay
+auto-weight verify --workspace runs/copy-repair-replay
 ```

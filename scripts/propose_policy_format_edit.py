@@ -8,8 +8,8 @@ from safetensors import safe_open
 from safetensors.torch import save_file
 import torch
 
-from weight_edit_toolkit.checkpoint import HF_ADAPTER, checkpoint_hash, hf_files
-from weight_edit_toolkit.contracts import write_json
+from auto_weight.checkpoint import HF_ADAPTER, checkpoint_hash, hf_files
+from auto_weight.contracts import write_json
 
 
 def main():
