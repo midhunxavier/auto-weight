@@ -2,6 +2,8 @@
 
 Codex and Claude Code each received the same five tasks and worked through the local AutoWeight MCP server in separate workspaces. The suite includes a trained DistilGPT2 regression and four small GPT-2 fixtures with deliberately constructed weights.
 
+For inspection, simulator replays, and one-shot construction using published weights, see the [eight weight-space studies](../weight-space/README.md).
+
 | Scenario | Base on confirmation | Codex | Claude Code | Fixed one-edit control |
 | --- | --- | --- | --- | --- |
 | [Restore raw JSON](format-json/README.md) | JSON 0/60, queues 60/60 | Accepted on attempt 1 | No eligible edit in 4 attempts | Accepted |

@@ -12,6 +12,6 @@ AutoWeight helps an agent prepare checks, measure weight edits, and export a che
 
 ## Research coverage
 
-The [weight-space examples](../examples/weight-space/README.md) distinguish live checks from recorded evidence. Two classifier issues share one evaluator. Kinetix, Breakout, and Go exercise external environments. Qwen uses its own Transformers runtime and can reuse completed batches. The long Qwen benchmark uses a separate resource budget, and confirmation remains single-use. Sycophancy pairs can be probed locally when checkpoints are available. The released evidence covers the original pairs.
+The [weight-space examples](../examples/weight-space/README.md) distinguish live checks from recorded evidence. Two classifier issues share one evaluator. Kinetix, MinAtar, and Go exercise external environments. Qwen uses its own Transformers runtime and can reuse completed batches. The long Qwen benchmark uses a separate resource budget, and confirmation remains single-use. Sycophancy pairs can be probed locally when checkpoints are available. The released evidence covers the original pairs.
 
 Per-run storage, one supervised worker, and the existing CLI and MCP entry points cover these workflows. Benchmark dependencies and launch instructions live with the examples. Additional formats or protocols should come with a concrete use case and a reproducible acceptance check.

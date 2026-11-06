@@ -75,7 +75,7 @@ We fine-tuned SmolLM2 on a synthetic order fulfillment policy. It learned the po
 
 ## Examples and documentation
 
-- [Five end-to-end repairs with Codex and Claude Code](examples/agent-repairs/README.md) · [DistilGPT2 walkthrough](examples/distilgpt2-quickstart/README.md) · [JSON repair](examples/json-repair/README.md) · [Small-transformer copying repair](examples/copy-repair/README.md)
-- The source checkout includes evaluation preparation and external evaluators. [Install from a checkout](docs/06-cli-and-mcp.md#install-from-a-checkout) · [Prepare labeled evaluation data](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Weight-space examples](examples/weight-space/README.md)
-- [When checkpoint repair helps](docs/blog/auto-weight-checkpoint-repair.md) · [Evaluation protocol](docs/05-evaluation-protocol.md) · [Architecture](docs/03-architecture.md) · [All documentation](docs/)
+- **Five agent repair cases.** Compare Codex, Claude Code, and a fixed edit on JSON, routing, and policy regressions. [Agent repair examples](examples/agent-repairs/README.md) · [DistilGPT2 walkthrough](examples/distilgpt2-quickstart/README.md) · [JSON repair](examples/json-repair/README.md) · [Copying repair](examples/copy-repair/README.md)
+- **Eight weight-space studies.** Inspect tensors, replay published repairs, and score constructed policies. These examples use the source checkout. [Research examples and replay results](examples/weight-space/README.md) · [Install from a checkout](docs/06-cli-and-mcp.md#install-from-a-checkout)
+- [Blog and results](docs/blog/auto-weight-checkpoint-repair.md) · [Architecture](docs/03-architecture.md) · [Evaluation preparation](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Evaluation protocol](docs/05-evaluation-protocol.md) · [All documentation](docs/)
 - [Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/) · [Companion research repository](https://github.com/midhunxavier/weight-space-programming)
