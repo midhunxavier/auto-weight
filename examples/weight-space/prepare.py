@@ -71,18 +71,19 @@ def classifier(output, interpreter, *, axis=0):
                     cases=splits, metrics={"accuracy": 1}, gates=gates, seeds=(73, 84))
 
 
-def minatar(output, interpreter, episodes, steps):
+def minatar(output, interpreter, episodes, steps, *, game="breakout"):
     from assets import asset
 
-    data = asset("exp5_write_from_scratch/networks/breakout/hand.npz")
+    data = asset(f"exp5_write_from_scratch/networks/{game}/hand.npz")
     with np.load(BytesIO(data), allow_pickle=False) as weights:
         patch = dict(weights)
     base = {name: np.zeros_like(tensor) for name, tensor in patch.items()}
-    rows = [{"id": f"episode-{i}", "group": "breakout", "inputs": {"episode": i}} for i in range(episodes)]
-    prepare_example(output, title="Replay published one-shot Breakout construction", evaluator=HERE / "minatar_eval.py",
+    rows = [{"id": f"episode-{i}", "group": game, "inputs": {"episode": i}} for i in range(episodes)]
+    prepare_example(output, title=f"Replay published one-shot MinAtar construction for {game}",
+                    evaluator=HERE / "minatar_eval.py",
                     interpreter=interpreter, base=base, patch=patch, cases={"confirmation": rows},
-                    metrics={"score": 1}, config={"episode_steps": steps}, max_work=episodes * steps,
-                    gates=[{"group": "breakout", "metric": "score", "kind": "target", "min_candidate": 1}])
+                    metrics={"score": 1}, config={"game": game, "episode_steps": steps}, max_work=episodes * steps,
+                    gates=[{"group": game, "metric": "score", "kind": "target", "min_candidate": 1}])
 
 
 def kinetix(output, interpreter, steps):
@@ -146,13 +147,17 @@ if __name__ == "__main__":
     parser.add_argument("case", choices=("classifier", "classifier-alt", "minatar", "kinetix", "go"))
     parser.add_argument("output", type=Path)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    parser.add_argument("--game", choices=("breakout", "seaquest", "asterix"),
+                        help="MinAtar game (default: breakout)")
     parser.add_argument("--episodes", type=int, default=8)
     parser.add_argument("--steps", type=int, default=256)
     args = parser.parse_args()
     if not 1 <= args.episodes <= 10_000 or not 1 <= args.steps <= 10_000:
         parser.error("episodes and steps must be between 1 and 10,000")
+    if args.game and args.case != "minatar":
+        parser.error("--game applies only to the minatar case")
     if args.case == "minatar":
-        minatar(args.output, args.python, args.episodes, args.steps)
+        minatar(args.output, args.python, args.episodes, args.steps, game=args.game or "breakout")
     elif args.case == "kinetix":
         kinetix(args.output, args.python, args.steps)
     elif args.case == "go":

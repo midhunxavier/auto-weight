@@ -1,10 +1,20 @@
-"""Score the published Breakout architecture with the official MinAtar environment."""
+"""Score published policies in the official MinAtar environment."""
 import json
 from pathlib import Path
 import sys
 
 from minatar import Environment
 import numpy as np
+
+
+# The six input planes in each upstream policy prompt, in row-major order.
+CHANNELS = {
+    "breakout": (("paddle",), (), ("brick",), ("ball",), ("trail",), ()),
+    "seaquest": (("sub_front", "sub_back"), ("enemy_fish", "enemy_sub", "enemy_bullet"),
+                 ("enemy_fish", "enemy_sub", "diver"), ("friendly_bullet",), ("trail", "sub_back"),
+                 ("oxygen_guage", "diver_guage")),
+    "asterix": (("player",), ("enemy",), ("gold",), (), ("trail",), ()),
+}
 
 
 def main(request_path, response_path):
@@ -14,8 +24,10 @@ def main(request_path, response_path):
                   for layer in ("dense1", "dense2", "logits")]
     steps, observations = 0, []
     cap = request["config"]["episode_steps"]
-    env = Environment("breakout", sticky_action_prob=0.1)
-    channels = env.env.channels
+    game = request["config"].get("game", "breakout")
+    env = Environment(game, sticky_action_prob=0.1)
+    channels = [(target, [env.env.channels[name] for name in names])
+                for target, names in enumerate(CHANNELS[game]) if names]
     for line in Path(request["cases"]).read_text().splitlines():
         row = json.loads(line)
         for seed in request["seeds"]:
@@ -28,8 +40,8 @@ def main(request_path, response_path):
                     raise ValueError("episode step budget exhausted")
                 view = env.state()
                 encoded = np.zeros((10, 10, 6), dtype=np.float32)
-                for target, channel in ((0, "paddle"), (2, "brick"), (3, "ball"), (4, "trail")):
-                    encoded[:, :, target] = view[:, :, channels[channel]]
+                for target, indices in channels:
+                    encoded[:, :, target] = view[:, :, indices].any(axis=-1)
                 value = encoded.ravel()
                 for matrix, bias in layers[:-1]:
                     value = np.tanh(value @ matrix + bias)

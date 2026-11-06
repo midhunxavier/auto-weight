@@ -69,13 +69,33 @@
       "bytes": 4693,
       "sha256": "bc10c6f957af95cdd52ee4be085acd249046f6117dbdb8c735fd5ddb2195c47c"
     },
+    "exp5_write_from_scratch/networks/asterix/hand.npz": {
+      "bytes": 83574,
+      "sha256": "4c537e227824318c650d98e1e52de5a106071699213b7551e0810af71e9cdf1e"
+    },
     "exp5_write_from_scratch/networks/breakout/hand.npz": {
       "bytes": 83574,
       "sha256": "6e8d42658aed3704c7bf6fb67015e9468cc03f1d67cb8a4fd192e6534fcccb4a"
     },
+    "exp5_write_from_scratch/networks/seaquest/hand.npz": {
+      "bytes": 83574,
+      "sha256": "2625453048e97b678d73dcf199dfb44d7ef659eb9c94e15263c6c33035fb3e7e"
+    },
     "exp6_go_from_scratch/eval/budget_0/eval_submission.json": {
       "bytes": 2362,
       "sha256": "5c88386d0b48062ea9e7946f512784cbcbe0a00087f2f25cf4966191bedcc35f"
+    },
+    "exp6_go_from_scratch/eval/budget_10/eval_submission.json": {
+      "bytes": 2353,
+      "sha256": "f63ea441d82f586e38655370a3da551d291080b6dbde2ebdbcfd341d8982e2ec"
+    },
+    "exp6_go_from_scratch/eval/budget_25/eval_submission.json": {
+      "bytes": 2365,
+      "sha256": "a2d925fc2bfa87efb97122deb45f960354915953a45e060c572c3c0b03482383"
+    },
+    "exp6_go_from_scratch/eval/budget_50/eval_submission.json": {
+      "bytes": 2317,
+      "sha256": "7553b503535dbe517e5218337be11bd465824024c282d4d92d61a05a00e4fe79"
     },
     "exp6_go_from_scratch/networks/budget_0/L1.W.npy": {
       "bytes": 497792,
@@ -152,6 +172,22 @@
     "exp7_sycophancy/runs/weights_only_4/pair2/prediction.json": {
       "bytes": 2870,
       "sha256": "079d3289dd12d17c2521f0b6c5cb763d0723c88ee8d639ac9f0cbb85e2ef38e5"
+    },
+    "exp8_math/eval/p10c/merged.json": {
+      "bytes": 1719,
+      "sha256": "30a0aadac571cdf400554216fea9d51771d60e0a4d691a9fe9d674e74c25c3b1"
+    },
+    "exp8_math/eval/p25c/merged.json": {
+      "bytes": 1717,
+      "sha256": "283a121ae5783e242fdfdc0bcc25cbeed66e3224afcca67bd461d709767908c6"
+    },
+    "exp8_math/eval/p50c/merged.json": {
+      "bytes": 1777,
+      "sha256": "c93d3db30a612ef0da396014fdfbe011efbcf2cd417e2e6125664d7effdd0471"
+    },
+    "exp8_math/eval/unedited/merged.json": {
+      "bytes": 1706,
+      "sha256": "5c31370485b9f197f592745e935eeaee6b09dc127daa5b2a8be1ebbcbc210221"
     },
     "exp8_math/runs/p50c/edit/edit.npz": {
       "bytes": 387619,

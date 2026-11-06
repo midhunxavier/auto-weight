@@ -1,8 +1,30 @@
-# When AutoWeight Helps With Checkpoint Repair
+# Checkpoint repair and weight-space experiments with AutoWeight
 
 A fine-tune can improve a model on one task and break a behavior another part of the system depends on. An API client may suddenly receive fenced JSON. A routing model may learn a new queue name and start misclassifying urgent tickets. AutoWeight makes a targeted repair testable. An agent proposes a bounded tensor edit, the local runner grades it against the base checkpoint, and a separate confirmation split decides whether to export it.
 
-I would use it for a specific regression with objective checks for both the fix and the behavior at risk. In five controlled cases, selective edits recovered behavior that full rollback lost, and the evaluation gates also stopped edits that would have traded one policy error for another.
+The repo now has two suites. Five repair cases compare Codex and Claude Code with fixed edits and, where available, full rollback. A second suite covers the eight numbered studies from Takehi, Teoh, Zhang, and Khattab, with local tools for inspecting weights, replaying published edits, and scoring one-shot policies. The extended commands and examples run from a source checkout. [Agent repair cases](../../examples/agent-repairs/README.md) · [Weight-space studies](../../examples/weight-space/README.md) · [Install from a checkout](../06-cli-and-mcp.md#install-from-a-checkout)
+
+## How AutoWeight works today
+
+```mermaid
+flowchart LR
+    Inputs["Checkpoint and evaluation cases"] --> Runner["Freeze workspace and gates"]
+    Agent["Agent or terminal user"] --> Edit["Propose a tensor edit"]
+    Runner --> Edit
+    Edit --> Dev["Score on development cases"]
+    Dev -->|"Feedback"| Agent
+    Dev -->|"One eligible edit"| Final["Score on confirmation cases"]
+    Runner -->|"One-shot construction"| Submit["Submit one candidate"]
+    Submit --> Final
+    Final -->|"Pass"| Export["Export checkpoint and report"]
+    Final -->|"Fail"| Report["Keep the report"]
+```
+
+**Prepare and inspect.** `prepare` can split labeled text examples by prompt family or validate existing splits. The runner freezes the checkpoint, cases, gates, and budget, then scores the development baseline. Agents can list tensors and read bounded slices to decide where to edit. [CLI and MCP guide](../06-cli-and-mcp.md)
+
+**Apply and measure.** Codex and Claude Code use local MCP. The CLI supports manual proposals or an Ollama proposer. Built-in repair can restore, blend, or scale weights. Replacement payloads can supply explicit values for entire tensors or slices. Text and token evaluators ship with the runner, and a trusted local evaluator can return numeric observations from a simulator or a separate model runtime. [Architecture](../03-architecture.md) · [External evaluator protocol](../15-external-evaluators.md)
+
+**Confirm and export.** Repair uses paired improvement and preservation gates. The runner rebuilds one selected edit, checks its hash against the development candidate, and scores it on the held-out cases. Construction reserves a single submission and checks an absolute score floor. The passing result includes the evaluated NPZ or Hugging Face checkpoint and a report.
 
 ## What happened in five cases
 
@@ -21,6 +43,25 @@ The strongest case for the proposer was chat severity. Both full rollback and th
 The conflict case shows the value of the runner independently of the proposer. With the available weights, the two prompt types reached the same final decision representation. Trying a stronger blend only moved the error from unverified to verified requests. A data or training change would be needed to make this fixture distinguish them.
 
 The DistilGPT2 case used a pretrained model with a locally induced regression on synthetic tickets and reused the existing experiment's holdout. The other four checkpoints had deliberately constructed weights, and their held-out prompts used new wording and IDs with the same answer classes. These results describe the five scenarios and one session per client per scenario. They establish how the workflow behaves under controlled conditions and leave production coverage to the user's evaluation set.
+
+## From reading weights to building a policy
+
+The research examples use revision-pinned assets and published weights. The local runs below test how AutoWeight stages, scores, and exports them. The last column describes what the original team reported with its own proposer and evaluation protocol. [Replay commands and local results](../../examples/weight-space/README.md) · [Original study](https://rikiyat.github.io/blog/weight-space-programming/)
+
+| Study | What you can do in AutoWeight | Published result |
+| --- | --- | --- |
+| 1. Identify a game policy | Stage four weight sets under opaque IDs and score submitted labels | Astra named all four games |
+| 2. Identify a diffusion model's target shape | Stage three checkpoints and score submitted labels | Astra identified all three shapes |
+| 3. Identify language and copying heads | Inspect middle blocks and score labels and head lists | All three languages and their copying heads identified |
+| 4. Repair the Kinetix ramp policy | Rebuild the rounded base and replay the edit on paired ramp and preservation cases | Base succeeded in 0/256 episodes. The edit succeeded in 1,024/1,024 |
+| 5. Construct MinAtar policies | Replay Breakout, Seaquest, and Asterix from zero templates. Local means were **526.69**, **60.50**, and **54.22** over 32 episodes each | Means were 517.4, 53.1, and 53.2 over 1,000 episodes each |
+| 6. Construct a 9×9 Go policy | Replay the zero-practice weights. They won **5/8** against a seeded uniform legal-move opponent | The zero-practice policy beat two smaller PPO opponents. The 50-pass policy beat the equal-sized PPO control |
+| 7. Diagnose sycophancy | Fetch the original results, or compare attention on a compatible pair you supply | Attention-assisted identification succeeded on three pairs. Weights-only attempts were inconclusive |
+| 8. Repair Qwen reasoning loops | Apply the published patch with a separate generation evaluator, or retrieve benchmark summaries | MATH-500 rose from 7.9% to 48.1%. The share hitting the token limit fell from 93.0% to 33.1% |
+
+We verified staging and scoring for the three diagnosis examples using the reference keys. The MinAtar and Go replays passed their local score gates, and `verify` confirmed the exported checkpoints. A separate offline classifier exercised paired repair through the same external evaluator protocol. Confirmation accuracy for the repaired class rose from **0/32 to 32/32**, and the preserved class stayed at **32/32**.
+
+The local Go run measures a different opponent, and the MinAtar sample uses 32 episodes per game. The Kinetix and Qwen figures in the table come from the authors' published runs. The original team also tried targeted edits on a Gemma model that rarely looped and found no established math improvement. The Qwen result shows how much removing a particular failure mode can matter. [Original benchmark protocols](https://rikiyat.github.io/blog/weight-space-programming/)
 
 ## How to use it effectively
 

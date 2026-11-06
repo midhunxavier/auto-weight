@@ -9,10 +9,11 @@ from assets import MANIFEST, asset
 REPORTS = {
     "kinetix": ["exp4_fix_car/eval/oneshot_result.json"],
     "minatar": ["exp5_write_from_scratch/eval/minatar_eval.json"],
-    "go": ["exp6_go_from_scratch/eval/budget_0/eval_submission.json"],
+    "go": [f"exp6_go_from_scratch/eval/budget_{budget}/eval_submission.json" for budget in (0, 10, 25, 50)],
     "sycophancy": [*(f"exp7_sycophancy/eval/weights_only_{i}/score.json" for i in range(1, 4)),
                    "exp7_sycophancy/runs/weights_only_4/pair2/prediction.json",
                    "exp7_sycophancy/eval/attention_tool/score.json"],
+    "qwen": [f"exp8_math/eval/{run}/merged.json" for run in ("unedited", "p10c", "p25c", "p50c")],
 }
 
 
