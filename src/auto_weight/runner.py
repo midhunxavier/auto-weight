@@ -190,8 +190,8 @@ def freeze_proposal(proposal_path, destination, issue, workspace):
     proposal = validate_proposal(read_json(proposal_path), base_sha256)
     from .tensors import PATCH_LIMIT, npz_layout
 
-    if "evaluator" in issue and any(op["op"] != "replace" for op in proposal["operations"]):
-        raise EditError("external checkpoint adapters support replacement proposals")
+    if adapter == NAMED_ADAPTER and any(op["op"] != "replace" for op in proposal["operations"]):
+        raise EditError("named-tensor external adapters support replacement proposals")
     if adapter == LORA_ADAPTER and any("donor" in op for op in proposal["operations"]):
         raise EditError("LoRA runs support scale and replace operations on the one supplied adapter")
     donors = {}
