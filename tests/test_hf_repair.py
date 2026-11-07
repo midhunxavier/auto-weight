@@ -79,12 +79,15 @@ def test_hf_quickstart_and_text_grading_export(tmp_path, capsys, architecture):
         "setup", "--workspace", str(workspace), "--base", str(tmp_path / "base"),
         "--development", str(tmp_path / "development.jsonl"),
         "--confirmation", str(tmp_path / "confirmation.jsonl"),
-        "--issue", "Fixture text format regression",
+        "--issue", "Fixture text format regression <script>",
         "--improve", "fix", "json_exact", "0.5", "0.9",
         "--preserve", "keep", "text_exact", "0", "0.9",
         "--max-input-tokens", "8", "--max-new-tokens", "1", "--threads", "1",
     ]) == 0
-    assert json.loads(capsys.readouterr().out)["base_sha256"] == base_sha
+    setup_result = json.loads(capsys.readouterr().out)
+    assert setup_result["base_sha256"] == base_sha
+    assert "improve by at least 50 percentage points" in setup_result["acceptance_rules"][0]
+    assert "allow no decline and reach an observed score of at least 90%" in setup_result["acceptance_rules"][1]
     assert main(["tensors", "--checkpoint", str(workspace / "base"), "--prefix", "lm_head"]) == 0
     listing = json.loads(capsys.readouterr().out)
     assert listing["tensors"] == [{"name": "lm_head.weight", "shape": [72, 8], "dtype": "F32"}]
@@ -107,6 +110,19 @@ def test_hf_quickstart_and_text_grading_export(tmp_path, capsys, architecture):
     assert "development_samples" not in final["evaluation"]
     exported = workspace / "confirmation/result/model"
     assert runner.verify(workspace)["checkpoint"] == str(exported)
+    html = tmp_path / "report.html"
+    assert main(["report", "--workspace", str(workspace), "--html", str(html)]) == 0
+    report = capsys.readouterr().out
+    assert "Passed the configured confirmation checks" in report
+    assert "Pass · fix (json_exact, 32 examples): 0% → 100%" in report
+    assert "Development examples · attempt 001" in report
+    assert "case0 fix" in report
+    assert "case32 fix" not in report
+    assert "&lt;script&gt;" in html.read_text()
+    inside_result = exported.parent / "report.html"
+    assert main(["report", "--workspace", str(workspace), "--html", str(inside_result)]) == 1
+    assert "save the HTML report at the workspace root" in capsys.readouterr().err
+    assert not inside_result.exists()
     assert file_hash(exported / "tokenizer.json") == file_hash(tmp_path / "base/tokenizer.json")
     assert checkpoint_hash(tmp_path / "base", HF_ADAPTER) == base_sha
     (exported / "tokenizer.json").write_text("{}")
@@ -178,6 +194,8 @@ def test_repair_preflight_rejects_invalid_inputs_before_contacting_proposer(
     ]) == 1
     error = json.loads(capsys.readouterr().err)["error"]
     assert message in error
+    if problem == "short":
+        assert "Found 1. Add 31 labeled examples to this split." in error
     assert "HOLDOUT_ONLY" not in error
     assert not workspace.exists()
 

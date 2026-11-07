@@ -78,7 +78,8 @@ def read_examples(path, tokenizer, config, gates, model_context, *, private=Fals
             try:
                 metrics, grade = compile_check(row["check"])
             except (EditError, Unresolvable, RecursionError) as exc:
-                detail = "invalid check definition" if private else str(exc)
+                detail = ("invalid check definition. Use an exact check with an expected answer, "
+                          "or a valid JSON check.") if private else str(exc)
                 raise EditError(f"line {index}: {detail}") from exc
             if group_metrics.setdefault(group, metrics) != metrics:
                 raise EditError(f"line {index}: examples in the same group must use the same metrics")
@@ -95,17 +96,25 @@ def read_examples(path, tokenizer, config, gates, model_context, *, private=Fals
                 raise EditError(f"line {index}: prompt is empty after tokenization")
             if len(tokens) > config["max_input_tokens"]:
                 raise EditError(f"line {index}: prompt has {len(tokens)} tokens; max_input_tokens is "
-                                f"{config['max_input_tokens']}")
+                                f"{config['max_input_tokens']}. Shorten the prompt or raise the input token limit.")
             if len(tokens) + config["max_new_tokens"] > model_context:
                 raise EditError(f"line {index}: prompt plus max_new_tokens exceeds model context of {model_context}")
             if tokens in seen:
                 raise EditError(f"line {index}: duplicate tokenized evaluation prompt")
             seen.add(tokens)
             groups[group].append((prompt, tokens, grade))
+    problems = []
     for gate in gates:
-        group = gate["group"]
-        if len(groups.get(group, [])) < 32 or gate["metric"] not in group_metrics[group]:
-            raise EditError(f"gate {group}/{gate['metric']} requires at least 32 examples with that metric")
+        group, metric = gate["group"], gate["metric"]
+        count = len(groups.get(group, []))
+        if count and metric not in group_metrics[group]:
+            problems.append(f"gate {group}/{metric} has no matching checks. "
+                            f"Use checks that provide {metric} for every example in this group.")
+        elif count < 32:
+            problems.append(f"gate {group}/{metric} requires at least 32 examples with that metric. "
+                            f"Found {count}. Add {32 - count} labeled examples to this split.")
+    if problems:
+        raise EditError(" ".join(problems))
     return groups, group_metrics, seen
 
 

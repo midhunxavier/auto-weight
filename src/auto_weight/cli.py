@@ -2,12 +2,14 @@
 import argparse
 import json
 from pathlib import Path
+from shlex import join
 import sys
 
-from .checkpoint import HF_ADAPTER, checkpoint_hash
+from .checkpoint import checkpoint_hash, directory_adapter
 from .tensors import metadata, read_tensor
 from .contracts import EditError, integer
 from .quickstart import setup
+from .report import render_report, setup_feedback, write_html
 from .runner import attempt, baseline, finalize, initialize, submit, verify
 
 
@@ -32,6 +34,9 @@ def main(argv=None):
             command.add_argument("--attempt", required=True)
     fingerprint = commands.add_parser("fingerprint", help="hash a checkpoint file or Hugging Face directory")
     fingerprint.add_argument("--checkpoint", required=True, type=Path)
+    report = commands.add_parser("report", help="show a readable summary of a saved run")
+    report.add_argument("--workspace", required=True, type=Path)
+    report.add_argument("--html", type=Path, help="also save a standalone HTML report to a new file")
     runtime = commands.add_parser("setup-runtime", help="check and configure the local MCP runtime")
     runtime.add_argument("--input-root", required=True, type=Path, help="existing folder with model and evaluation files")
     runtime.add_argument("--runs-dir", type=Path, help="output folder for repair runs")
@@ -42,6 +47,7 @@ def main(argv=None):
         starter = commands.add_parser(name, help=description)
         for flag in ("base", "development", "confirmation"):
             starter.add_argument(f"--{flag}", required=True, type=Path)
+        starter.add_argument("--lora", type=Path, help="standalone PEFT LoRA adapter to edit, with its original --base")
         starter.add_argument("--workspace", required=name == "setup", type=Path)
         starter.add_argument("--issue", required=True, help="description of the model behavior to repair")
         for kind in ("improve", "preserve"):
@@ -88,9 +94,20 @@ def main(argv=None):
             result = baseline(args.workspace)
         elif args.command == "verify":
             result = verify(args.workspace)
+        elif args.command == "report":
+            if args.html is not None:
+                output, workspace = args.html.resolve(), args.workspace.resolve()
+                if output.is_relative_to(workspace) and output.parent != workspace:
+                    raise EditError("save the HTML report at the workspace root or outside the workspace")
+            report = render_report(args.workspace)
+            if args.html is not None:
+                write_html(args.html, report)
+            print(report)
+            return 0
         elif args.command == "setup":
             result = setup(args)
             result["baseline"] = baseline(args.workspace)
+            result["setup_feedback"] = setup_feedback(result["baseline"])
         elif args.command == "setup-runtime":
             from .runtime import setup_runtime
 
@@ -117,10 +134,14 @@ def main(argv=None):
                                    conversion=args.conversion)
         else:
             path = args.checkpoint
-            adapter = HF_ADAPTER if path.is_dir() else "tiny-transformer-v1"
+            adapter = directory_adapter(path) if path.is_dir() else "tiny-transformer-v1"
             result = {"status": "hashed", "sha256": checkpoint_hash(path, adapter)}
     except (EditError, OSError) as exc:
         print(json.dumps({"status": "error", "error": str(exc)}), file=sys.stderr)
         return 1
+    if args.command in {"demo", "repair", "finalize", "submit"} and result["status"] != "error":
+        workspace = result.get("workspace") or args.workspace
+        print(f"View the repair report with {join(['auto-weight', 'report', '--workspace', str(workspace)])}",
+              file=sys.stderr)
     print(json.dumps(result, indent=2, sort_keys=True))
     return int(result["status"] == "error")

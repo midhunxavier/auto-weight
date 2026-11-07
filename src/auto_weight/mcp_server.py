@@ -15,10 +15,11 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from .automation import changed_tensors, inspect_development, materialize
-from .checkpoint import HF_ADAPTER, checkpoint_hash, hf_files, hf_storage
+from .checkpoint import HF_ADAPTER, LORA_ADAPTER, checkpoint_files, checkpoint_hash, directory_adapter, hf_storage
 from .tensors import metadata as tensor_metadata, read_tensor as inspect_tensor
 from .contracts import EditError, file_hash, integer, read_json, validate_issue, validate_proposal, write_json
 from .quickstart import setup
+from .report import acceptance_rules, setup_feedback, trial_lines
 from .runner import (
     attempt, baseline, finalize, initialize_issue, load_issue, read_sealed, sealed, stage_donor, submit, verify,
 )
@@ -42,9 +43,9 @@ def allowed_path(root, value):
     return path
 
 
-def allowed_model(root, value):
+def allowed_model(root, value, adapter=HF_ADAPTER):
     path = allowed_path(root, value)
-    for asset in hf_files(path).values():
+    for asset in checkpoint_files(path, adapter).values():
         allowed_path(root, asset)
     return path
 
@@ -71,6 +72,8 @@ def summary(report):
             result["work"] = data["work"]
         if stage == "development":
             result["examples"] = data.get("development_samples", {})
+        if report["status"] != "error":
+            result["decision_details"] = trial_lines(report)
     return result
 
 
@@ -160,7 +163,7 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
             return result
         path = allowed_path(input_root, checkpoint)
         if path.is_dir():
-            path = allowed_model(input_root, path)
+            path = allowed_model(input_root, path, directory_adapter(path))
         return inspect_tensor(path, tensor, bounds, summary)
 
     def publish_run(workspace, donors, changes):
@@ -171,16 +174,24 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
         write_json(workspace / "mcp-run.json", sealed(record))
         scores = baseline(workspace) if "development" in issue["datasets"] else None
         workspace.rename(runs_root / workspace.name)
-        return {"status": "ready", "run_id": workspace.name, "gates": issue["gates"],
-                "baseline": scores, "attempt_limit": issue["budget"]["attempts"]}
+        result = {"status": "ready", "run_id": workspace.name, "gates": issue["gates"],
+                  "acceptance_rules": acceptance_rules(issue["gates"], issue["model"]["adapter"]),
+                  "setup_feedback": setup_feedback(scores) if scores else [],
+                  "baseline": scores, "attempt_limit": issue["budget"]["attempts"]}
+        if "backbone" in issue:
+            result.update(base_sha256=issue["base"]["sha256"], backbone_sha256=issue["backbone"]["sha256"])
+        return result
 
     def create_from_issue(path):
         source = allowed_path(input_root, path)
         issue = validate_issue(read_json(source))
         adapter = issue["model"]["adapter"]
         base = source.parent / issue["base"]["path"]
-        issue["base"]["path"] = str(allowed_model(input_root, base) if hf_storage(adapter)
+        issue["base"]["path"] = str(allowed_model(input_root, base, adapter) if hf_storage(adapter)
                                     else allowed_path(input_root, base))
+        if adapter == LORA_ADAPTER:
+            backbone = source.parent / issue["backbone"]["path"]
+            issue["backbone"]["path"] = str(allowed_model(input_root, backbone))
         for ref in issue["datasets"].values():
             ref["path"] = str(allowed_path(input_root, source.parent / ref["path"]))
         if "evaluator" in issue:
@@ -205,25 +216,38 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
         max_new_tokens: int = 32, max_input_tokens: int = 128,
         improvement_delta: float = 0.10, improvement_floor: float = 0.90,
         preservation_margin: float = 0.05, issue_path: str | None = None,
+        preservation_floor: float | None = None, lora: str | None = None,
     ) -> dict:
         """Freeze a model, labeled JSONL splits, gates, and optional donor checkpoints.
 
         Paths are relative to the configured input root, or absolute within it.
         Use the user's issue and file paths. Fix group names the behavior to improve.
-        Other groups are preserved. Only development examples are returned.
+        Other groups are preserved. An optional preservation_floor sets a minimum
+        observed score (0 to 1) for each preservation group. Only development
+        examples are returned.
+        To edit a standalone PEFT LoRA adapter, supply lora and its original
+        base model. LoRA runs take a single adapter without donors.
         """
         if issue_path is not None:
-            if any(value is not None for value in (base, issue, development, confirmation, donors)):
+            if any(value is not None for value in (base, issue, development, confirmation, donors,
+                                                   preservation_floor, lora)):
                 raise EditError("issue_path cannot be combined with HF shortcut inputs")
             return create_from_issue(issue_path)
         if any(value is None for value in (base, issue, development, confirmation)):
             raise EditError("provide base, issue, development, and confirmation, or an issue_path")
+        if lora is not None and donors:
+            raise EditError("LoRA runs use a single adapter. Omit donors.")
         base_path = allowed_model(input_root, base)
+        lora_path = allowed_model(input_root, lora, LORA_ADAPTER) if lora is not None else None
         dev_path = allowed_path(input_root, development)
         heldout_path = allowed_path(input_root, confirmation)
         groups, preview, development_hash = inspect_development(dev_path)
-        if fix_group not in groups or len(groups) < 2:
-            raise EditError("provide a fix group and at least one preservation group")
+        if fix_group not in groups:
+            available = ", ".join(sorted(groups)) or "none"
+            raise EditError(f"fix group {fix_group!r} is missing. Choose a development group ({available}) "
+                            "or add labeled examples for the missing group.")
+        if len(groups) < 2:
+            raise EditError("add a second group of labeled examples for behavior you want to preserve")
         if preservation_margin < 0:
             raise EditError("preservation_margin must be nonnegative")
         if len(donors or []) > 4:
@@ -232,17 +256,18 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
         run_id = uuid4().hex
         with TemporaryDirectory(prefix=".create-", dir=runs_root) as staging:
             workspace = Path(staging) / run_id
+            floor = [] if preservation_floor is None else [str(preservation_floor)]
             options = SimpleNamespace(
-                base=base_path, development=dev_path, confirmation=heldout_path,
+                base=base_path, lora=lora_path, development=dev_path, confirmation=heldout_path,
                 issue=issue, workspace=workspace, prompt_format=prompt_format,
                 improve=[[fix_group, groups[fix_group], str(improvement_delta), str(improvement_floor)]],
-                preserve=[[group, metric, str(-preservation_margin)]
+                preserve=[[group, metric, str(-preservation_margin), *floor]
                           for group, metric in groups.items() if group != fix_group],
                 max_input_tokens=max_input_tokens, max_new_tokens=max_new_tokens, attempts=attempts,
                 timeout_seconds=240, batch_size=4, threads=4,
             )
             setup(options, expected_development=development_hash)
-            stored_base = workspace / "base"
+            stored_base = frozen_base(workspace)
             names = [item["name"] for item in catalog(stored_base)]
             references, changes = {}, {}
             store = workspace / "donors"
@@ -316,7 +341,10 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
             report = finalize(workspace, attempt_id)
         result = summary(report)
         if result["status"] == "accepted":
-            result["checkpoint"] = verify(workspace)["checkpoint"]
+            verified = verify(workspace)
+            result["checkpoint"] = verified["checkpoint"]
+            if "backbone" in verified:
+                result.update(backbone=verified["backbone"], backbone_sha256=verified["backbone_sha256"])
         return result
 
     @server.tool(annotations=read_only)
@@ -324,7 +352,7 @@ def build_server(input_root, runs_root, *, evaluator_paths=(), evaluator_python=
     def get_run(run_id: str) -> dict:
         """Verify a run, show attempt decisions, and return the accepted checkpoint path when present."""
         workspace, _ = find_run(run_id)
-        return {"run_id": run_id, **verify(workspace)}
+        return {"run_id": run_id, "workspace": str(workspace), **verify(workspace)}
 
     return server
 

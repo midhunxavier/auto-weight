@@ -1,7 +1,7 @@
 {
   "name": "auto-weight",
   "displayName": "AutoWeight",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "Propose, evaluate, and export repairs to local Hugging Face checkpoints.",
   "author": {
     "name": "AutoWeight contributors"

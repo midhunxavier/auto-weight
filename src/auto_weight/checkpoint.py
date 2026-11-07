@@ -5,12 +5,17 @@ import re
 from .contracts import EditError, file_hash, identify, read_json
 
 HF_ADAPTER = "hf-causal-lm-v1"
+LORA_ADAPTER = "hf-lora-v1"
 RAW_HF_ADAPTER = "hf-safetensors-v1"
 NAMED_ADAPTER = "named-tensors-v1"
 
 
 def hf_storage(adapter):
-    return adapter in {HF_ADAPTER, RAW_HF_ADAPTER}
+    return adapter in {HF_ADAPTER, RAW_HF_ADAPTER, LORA_ADAPTER}
+
+
+def hf_text(adapter):
+    return adapter in {HF_ADAPTER, LORA_ADAPTER}
 
 HF_LIMIT = 4 * 1024**3
 HF_METADATA = {
@@ -22,11 +27,36 @@ HF_METADATA = {
 REQUIRED = {"config.json", "tokenizer.json", "tokenizer_config.json"}
 WEIGHT_FILE = "model.safetensors"
 INDEX_FILE = "model.safetensors.index.json"
+LORA_CONFIG = "adapter_config.json"
+LORA_WEIGHTS = "adapter_model.safetensors"
 SHARD = re.compile(r"model(?:\.safetensors)?-[0-9]{5}-of-[0-9]{5}\.safetensors")
 
 
 def artifact_name(adapter):
+    if adapter == LORA_ADAPTER:
+        return "adapter"
     return "model" if hf_storage(adapter) else "model.npz"
+
+
+def directory_adapter(path):
+    path = Path(path)
+    if (path / LORA_CONFIG).is_file() and not any((path / name).exists() for name in (WEIGHT_FILE, INDEX_FILE)):
+        return LORA_ADAPTER
+    return HF_ADAPTER
+
+
+def checkpoint_files(path, adapter):
+    if adapter != LORA_ADAPTER:
+        return hf_files(path)
+    path = Path(path)
+    files = {name: path / name for name in (LORA_CONFIG, LORA_WEIGHTS)}
+    if not all(file.is_file() for file in files.values()):
+        raise EditError("LoRA adapter needs adapter_config.json and adapter_model.safetensors")
+    if any((path / name).exists() for name in (WEIGHT_FILE, INDEX_FILE)):
+        raise EditError("supply a standalone PEFT LoRA adapter folder")
+    if files[LORA_CONFIG].stat().st_size > 1024**2 or files[LORA_WEIGHTS].stat().st_size > HF_LIMIT:
+        raise EditError("LoRA adapter exceeds the file size limit")
+    return files
 
 
 def hf_files(path):
@@ -42,6 +72,8 @@ def hf_files(path):
             files[entry.name] = entry
     names = files.keys()
     shards = {name for name in names if SHARD.fullmatch(name)}
+    if WEIGHT_FILE not in names and INDEX_FILE not in names and (path / LORA_CONFIG).is_file():
+        raise EditError("pass the original model as --base and the standalone PEFT adapter as --lora")
     if not REQUIRED <= names:
         raise EditError("checkpoint needs config.json, tokenizer.json and tokenizer_config.json")
     if WEIGHT_FILE in names:
@@ -64,7 +96,7 @@ def hf_files(path):
 def checkpoint_hash(path, adapter, *, frozen=False):
     if not hf_storage(adapter):
         return file_hash(path)
-    files = hf_files(path)
+    files = checkpoint_files(path, adapter)
     if frozen and {entry.name for entry in Path(path).iterdir()} != files.keys():
         raise EditError("unexpected files in frozen Hugging Face checkpoint")
     return identify({name: file_hash(file) for name, file in files.items()})
@@ -79,7 +111,7 @@ def tensor_metadata(path, prefix, limit):
 
     tensors = {}
     try:
-        for name, file in hf_files(path).items():
+        for name, file in checkpoint_files(path, directory_adapter(path)).items():
             if not name.endswith(".safetensors"):
                 continue
             with safe_open(file, framework="np") as weights:

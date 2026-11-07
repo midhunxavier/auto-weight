@@ -2,8 +2,6 @@
 
 Use the existing workspace commands with a `wet.issue.v2` file when the built-in text or next-token evaluator does not measure your task. An evaluator is a trusted local Python script. AutoWeight freezes its bytes, the interpreter identity and installed package versions, the checkpoint, cases, and settings. The evaluator defines the architecture and observations. AutoWeight pairs scores, checks the gates, and controls export.
 
-The [classifier example](../examples/weight-space/README.md) generates complete records. Its alternate dataset uses the same evaluator and runner.
-
 ## Issue and checkpoint
 
 Keep the `issue`, `base`, `model`, `datasets`, `gates`, and `budget` fields from [the repair contract](04-patch-contract.md). The model uses `{"adapter":"named-tensors-v1","config":{}}` for a numeric NPZ or `hf-safetensors-v1` for a local Hugging Face directory. Use `auto-weight fingerprint` to identify either form. NPZ checkpoints use real numerical arrays and a maximum expanded size of 64 MiB. The Hugging Face adapter preserves supported metadata and shard layout and expects unquantized tensors with tied parameters stored once.

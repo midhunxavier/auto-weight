@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 
-from .checkpoint import HF_ADAPTER
+from .checkpoint import hf_text
 from .contracts import FILE_LIMIT, EditError, write_json
 from .runner import BASELINE_NAME, check_proposal, load_issue, read_sealed, sealed
 
@@ -35,7 +35,7 @@ def main():
         proposal = None if stage == "baseline" else check_proposal(proposal_dir, issue)
         if "evaluator" in issue:
             from .evaluator import evaluate
-        elif issue["model"]["adapter"] == HF_ADAPTER:
+        elif hf_text(issue["model"]["adapter"]):
             from .hf import evaluate
         else:
             from .evaluate import evaluate
