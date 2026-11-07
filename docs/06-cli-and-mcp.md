@@ -10,11 +10,11 @@ uv tool install 'auto-weight[hf,mcp]'
 
 For pip, run `python -m pip install 'auto-weight[hf,mcp]'` inside an activated virtual environment. Both installs provide `auto-weight` and `auto-weight-mcp`. If your shell cannot find the commands after a uv install, run `uv tool update-shell` and open a new terminal. With pip, activate the environment in each terminal where you use the CLI.
 
-You can now run `auto-weight demo` or repair a model from the terminal. CLI repair commands take their input paths directly. [Automatic repair](13-automatic-repair.md) · [Manual proposal workflow](#review-proposals-yourself)
+CLI repair commands take your model and evaluation paths directly. [Automatic repair](13-automatic-repair.md) · [Manual proposal workflow](#review-proposals-yourself)
 
 ### Install from a checkout
 
-For features added since PyPI 0.4.0, install from the repository root and use the plugin from the same checkout.
+To work on AutoWeight locally, install from the repository root and use the plugin from the same checkout.
 
 ```sh
 uv tool install --from '.[hf,mcp]' auto-weight
@@ -38,11 +38,11 @@ The plugin launcher uses the saved interpreter and paths. Other MCP clients can 
 
 ## Commands
 
-`prepare`, `baseline`, `read-tensor`, and `submit` were added after PyPI 0.4.0. [Install from a checkout](#install-from-a-checkout)
+The commands below are available in AutoWeight 0.5.0.
 
 | Command | Inputs | Result |
 |---|---|---|
-| `auto-weight demo` | Optional new `--workspace` directory | Try two scripted edits on a tiny local model and export the passing checkpoint |
+| `auto-weight demo` | Optional new `--workspace` directory | Offline installation smoke test with a generated fixture |
 | `auto-weight setup-runtime` | Local input folder and optional runs directory | Check the local MCP server and write the runtime config |
 | `auto-weight repair` | Local Hugging Face model, issue, split datasets and optional donors | Ask a local Ollama model for edits and confirm the first eligible candidate |
 | `auto-weight prepare` | Local HF model, labeled JSONL source and new output directory | Validate and write development and confirmation files |
@@ -56,10 +56,19 @@ The plugin launcher uses the saved interpreter and paths. Other MCP clients can 
 | `auto-weight try` | `--proposal FILE --workspace DIR` | `eligible`, `discarded` or `error` with a numbered attempt report |
 | `auto-weight finalize` | `--attempt NNN --workspace DIR` | `accepted`, `discarded` or `error` with a confirmation report |
 | `auto-weight verify` | `--workspace DIR` | Integrity check and accepted checkpoint path, when present |
+| `auto-weight report` | `--workspace DIR`, optional `--html FILE` | Readable results, acceptance rules, and an optional standalone HTML copy |
 
 Use [automatic repair](13-automatic-repair.md) to run the proposal loop in one command. For manual review, an LLM with CLI access can write a proposal file, run `try`, and read the JSON result. Compare the individual gate deltas and bounds when deciding what to try next. After selecting an eligible attempt, run `finalize` once. Normal evaluation decisions exit zero, including a discard. Invalid input and evaluator errors exit one. Automatic repair also exits one if it exhausts the proposal budget without scoring a candidate.
 
 Development reports live under `attempts/NNN/result/report.json`. Confirmation lives under `confirmation/result/`. An accepted result directory contains either the Hugging Face `model/` directory or `model.npz` alongside `report.json`. The report includes the model adapter and configuration needed for loading, base and candidate hashes, changed tensors, and metric results. `verify` checks the workspace and its records. The [AutoWeight plugin](../plugins/auto-weight/README.md) exposes the same runner through local MCP for Codex and Claude Code.
+
+Open a readable report after any attempt or confirmation:
+
+```sh
+auto-weight report --workspace runs/repair-001 --html repair-report.html
+```
+
+The command reads saved results and checks their integrity without running inference. It shows which checks passed, the reasons for failed checks, and before/after examples from development when available. Confirmation scores are aggregate. Save HTML at the workspace root or outside the workspace. Omit `--html` for terminal output alone. For MCP runs, use the workspace path returned by `get_run`.
 
 ## Prepare labeled evaluation data
 
@@ -69,9 +78,13 @@ Give the agent a compatible checkpoint, trusted project labels, and the behavior
 auto-weight prepare --base ./my-model --source labeled.jsonl --output ./prepared
 ```
 
-Use the returned paths in setup or `create_run`. Each group needs 32 examples in each split. The tool checks duplicate prompts after tokenization, labels, group counts, and context limits. Keep the confirmation file out of the agent's context. Use `--confirmation-exposed` or MCP `confirmation_independent=false` when the proposer has seen all source examples. A usable final set needs independent examples.
+Use the returned paths in setup or `create_run`. Each group needs 32 examples in each split. When examples are missing, `next_steps` lists how many to add to each group and split. The tool checks duplicate prompts after tokenization, labels, group counts, and context limits. Keep the confirmation file out of the agent's context. Use `--confirmation-exposed` or MCP `confirmation_independent=false` when the proposer has seen all source examples. A usable final set needs independent examples.
 
 The MCP server offers `prepare_evals`, `create_run`, `list_targets`, `read_tensor`, `try_edit`, `confirm_edit`, and `get_run`. See the [external evaluator protocol](15-external-evaluators.md) for advanced issue and proposal files.
+
+CLI setup and MCP `create_run` return the acceptance rules in plain language before any edit is tried. For example, `--preserve policy text_exact -0.02 0.95` allows a two percentage point decline on the paired lower bound and requires at least 95% observed accuracy. The equivalent MCP shortcut uses `preservation_margin=0.02` and `preservation_floor=0.95` for all preservation groups.
+
+To repair a PEFT LoRA adapter, supply the original checkpoint as `--base` and the adapter folder as `--lora` in CLI setup or repair. In MCP, use `base` and `lora` in `create_run`. A passing run exports the repaired adapter. [LoRA setup and loading](12-hugging-face.md#repair-a-peft-lora-adapter)
 
 ## Review proposals yourself
 

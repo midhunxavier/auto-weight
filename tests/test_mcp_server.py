@@ -105,13 +105,20 @@ def test_stdio_repair_respects_run_boundaries(tmp_path):
                 assert incompatible.isError
                 assert "donor architecture config differs from base" in str(incompatible.content)
                 assert not list((tmp_path / "runs").iterdir())
+                (inputs / "short.jsonl").write_text((inputs / "confirmation.jsonl").read_text().splitlines()[0] + "\n")
+                short = await call("prepare_evals", base="base", source=issue["development"],
+                                   confirmation="short.jsonl")
+                assert short["status"] == "needs_examples"
+                assert "confirmation: add 31 more labeled examples to group 'fix'." in short["next_steps"]
                 prepared = await call("prepare_evals", base="base", source=issue["development"],
                                       confirmation=issue["confirmation"], max_input_tokens=8, max_new_tokens=1)
                 assert prepared["counts"]["confirmation"] == {"fix": 32, "keep": 32}
                 assert not list((tmp_path / "runs").iterdir())
                 issue.update(development=prepared["development"], confirmation=prepared["confirmation"])
-                run = await call("create_run", **issue)
+                run = await call("create_run", **issue, preservation_floor=0.95)
                 assert run["baseline"]["groups"]["fix"]["baseline"]["json_exact"] == 0
+                assert run["gates"][1]["min_candidate"] == 0.95
+                assert "reach an observed score of at least 95%" in run["acceptance_rules"][1]
                 run_id = run["run_id"]
                 workspace = tmp_path / "runs" / run_id
                 donors = list((workspace / "donors").iterdir())
@@ -133,6 +140,7 @@ def test_stdio_repair_respects_run_boundaries(tmp_path):
                 bad = await call("try_edit", run_id=run_id, op="blend", amount=0.2, donor_id="donor1",
                                  target="changed", hypothesis="Blend a small fraction of the earlier readout.")
                 assert bad["status"] == "discarded"
+                assert "is below the required" in bad["decision_details"][0]
                 inspected = await call("read_tensor", run_id=run_id, tensor=name, bounds=[[0, 1], [0, 2]])
                 assert inspected["shape"] == [1, 2]
                 write_json(inputs / "proposal.json", {

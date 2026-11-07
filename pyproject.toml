@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-weight"
-version = "0.4.0"
+version = "0.5.0"
 description = "Repair fine-tuning regressions in local language model checkpoints"
 readme = "README.pypi.md"
 license = "MIT"
@@ -28,6 +28,7 @@ Issues = "https://github.com/midhunxavier/auto-weight/issues"
 [project.optional-dependencies]
 torch = ["torch>=2.5,<3"]
 hf = ["torch>=2.5,<3", "transformers>=4.57.6,<5", "safetensors>=0.4,<1", "jsonschema>=4.23,<5"]
+lora = ["peft>=0.18,<0.19"]
 mcp = ["mcp>=1.26,<2"]
 test = ["pytest>=8,<9"]
 

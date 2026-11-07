@@ -8,10 +8,10 @@ Install `auto-weight[hf,mcp]` from PyPI, then run `auto-weight setup-runtime --i
 
 ## Load the plugin
 
-Use the repository tag that matches your PyPI installation. For example, with version 0.4.0, clone the release tag and enter the checkout.
+Use the repository tag that matches your PyPI installation. For example, with version 0.5.0, clone the release tag and enter the checkout.
 
 ```sh
-git clone --branch v0.4.0 https://github.com/midhunxavier/auto-weight.git
+git clone --branch v0.5.0 https://github.com/midhunxavier/auto-weight.git
 cd auto-weight
 ```
 
@@ -40,6 +40,4 @@ Use `prepare_evals` to prepare trusted labeled data and `create_run` to score th
 
 For another MCP client, use the installed `auto-weight-mcp` command as a local stdio server with the saved runtime configuration.
 
-[DistilGPT2 input preparation](../../examples/distilgpt2-quickstart/README.md)
-
-[Live client validation and trial reports](../../examples/distilgpt2-quickstart/mcp/README.md)
+[Prepare labeled evaluation data](../../docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data)

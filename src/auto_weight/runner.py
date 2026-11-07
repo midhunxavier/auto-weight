@@ -11,7 +11,10 @@ import sys
 from tempfile import TemporaryDirectory
 from time import monotonic
 
-from .checkpoint import HF_ADAPTER, NAMED_ADAPTER, RAW_HF_ADAPTER, artifact_name, checkpoint_hash, hf_files, hf_storage
+from .checkpoint import (
+    HF_ADAPTER, LORA_ADAPTER, NAMED_ADAPTER, RAW_HF_ADAPTER, artifact_name, checkpoint_files,
+    checkpoint_hash, hf_storage, hf_text,
+)
 from .contracts import (
     CHECKPOINT_LIMIT, FILE_LIMIT, EditError, file_hash, identify, read_json,
     validate_issue, validate_proposal, write_json,
@@ -48,12 +51,15 @@ def runtime_identity(adapter, evaluator=None):
             from .evaluator import environment
 
             runtime["external"] = environment(evaluator["python"])
-        if adapter == HF_ADAPTER:
+        if hf_text(adapter):
             for package in ("transformers", "tokenizers", "safetensors", "jsonschema", "referencing"):
+                runtime[package] = version(package)
+        if adapter == LORA_ADAPTER:
+            for package in ("peft", "accelerate"):
                 runtime[package] = version(package)
         return runtime
     except PackageNotFoundError as exc:
-        extra = "hf" if hf_storage(adapter) else "torch"
+        extra = "hf,lora" if adapter == LORA_ADAPTER else "hf" if hf_storage(adapter) else "torch"
         raise EditError(f"install auto-weight[{extra}] to run evaluations") from exc
 
 
@@ -77,7 +83,7 @@ def snapshot_checkpoint(reference, origin, destination, adapter):
     if not hf_storage(adapter):
         return snapshot(reference, origin, destination, CHECKPOINT_LIMIT)
     source = origin / reference["path"]
-    files = hf_files(source)
+    files = checkpoint_files(source, adapter)
     hashes = {name: file_hash(path) for name, path in files.items()}
     if identify(hashes) != reference["sha256"]:
         raise EditError(f"input checkpoint hash mismatch: {source}")
@@ -100,11 +106,13 @@ def initialize_issue(issue, origin, workspace):
     runtime = runtime_identity(adapter, issue.get("evaluator"))
     workspace.mkdir(mode=0o700)
     try:
-        base_name = "base" if hf_storage(adapter) else "base.npz"
+        base_name = "adapter" if adapter == LORA_ADAPTER else "base" if hf_storage(adapter) else "base.npz"
         issue["base"] = snapshot_checkpoint(issue["base"], origin, workspace / base_name, adapter)
+        if adapter == LORA_ADAPTER:
+            issue["backbone"] = snapshot_checkpoint(issue["backbone"], origin, workspace / "backbone", HF_ADAPTER)
         for stage, reference in issue["datasets"].items():
             issue["datasets"][stage] = snapshot(reference, origin, workspace / f"{stage}.jsonl", FILE_LIMIT)
-        if adapter == HF_ADAPTER:
+        if hf_text(adapter):
             from .hf import preflight
 
             preflight(workspace, issue)
@@ -145,6 +153,12 @@ def check_reference(directory, reference, adapter=None):
         raise EditError(f"frozen input hash mismatch: {path.name}")
 
 
+def check_base(workspace, issue):
+    check_reference(workspace, issue["base"], issue["model"]["adapter"])
+    if "backbone" in issue:
+        check_reference(workspace, issue["backbone"], HF_ADAPTER)
+
+
 def load_issue(workspace, require_implementation=True):
     frozen = read_sealed(workspace / "issue.json")
     validate_issue(frozen["issue"])
@@ -178,6 +192,8 @@ def freeze_proposal(proposal_path, destination, issue, workspace):
 
     if "evaluator" in issue and any(op["op"] != "replace" for op in proposal["operations"]):
         raise EditError("external checkpoint adapters support replacement proposals")
+    if adapter == LORA_ADAPTER and any("donor" in op for op in proposal["operations"]):
+        raise EditError("LoRA runs support scale and replace operations on the one supplied adapter")
     donors = {}
     store = workspace / "donors"
     staging = destination.parent / "donors"
@@ -253,11 +269,10 @@ def baseline(workspace):
         temporary = Path(folder)
         frozen = load_issue(workspace)
         issue = frozen["issue"]
-        adapter = issue["model"]["adapter"]
         dataset = issue["datasets"].get("development")
         if dataset is None:
             raise EditError("this issue has no development stage")
-        check_reference(workspace, issue["base"], adapter)
+        check_base(workspace, issue)
         check_reference(workspace, dataset)
         timeout = issue["budget"]["timeout_seconds"]
         start = monotonic()
@@ -265,7 +280,7 @@ def baseline(workspace):
             evaluate_worker([workspace, workspace, temporary, "baseline"], timeout)
         except subprocess.TimeoutExpired as exc:
             raise EditError("baseline exceeded the configured wall time") from exc
-        check_reference(workspace, issue["base"], adapter)
+        check_base(workspace, issue)
         check_reference(workspace, dataset)
         if (temporary / BASELINE_NAME).is_file():
             (temporary / BASELINE_NAME).replace(workspace / BASELINE_NAME)
@@ -293,7 +308,7 @@ def run_trial(workspace, frozen, proposal_dir, destination, stage, expected_cand
         result_dir.mkdir()
         status, evaluation, error = "error", None, None
         try:
-            check_reference(workspace, issue["base"], adapter)
+            check_base(workspace, issue)
             check_reference(workspace, dataset)
             if stage == "confirmation" and "development" in issue["datasets"]:
                 check_reference(workspace, issue["datasets"]["development"])
@@ -304,7 +319,7 @@ def run_trial(workspace, frozen, proposal_dir, destination, stage, expected_cand
             evaluation = read_json(temporary / "evaluation.json", FILE_LIMIT)
             if "evaluator" in issue:
                 check_reference(workspace, issue["evaluator"]["script"])
-            check_reference(workspace, issue["base"], adapter)
+            check_base(workspace, issue)
             check_reference(workspace, dataset)
             check_proposal(proposal_dir, issue)
             candidate = temporary / name
@@ -430,13 +445,13 @@ def submit(workspace, proposal_path):
         return run_trial(workspace, frozen, destination, destination, "confirmation")
 
 
-def verify(workspace):
+def verify(workspace, *, include_details=False):
     workspace = Path(workspace).resolve()
     with locked(workspace):
         frozen = load_issue(workspace, require_implementation=False)
         issue = frozen["issue"]
         adapter = issue["model"]["adapter"]
-        check_reference(workspace, issue["base"], adapter)
+        check_base(workspace, issue)
         for reference in issue["datasets"].values():
             check_reference(workspace, reference)
         reports, checked_donors = {}, set()
@@ -478,9 +493,15 @@ def verify(workspace):
             if baseline_record["issue_id"] != frozen["id"]:
                 raise EditError("baseline summary does not match frozen issue")
             scores = baseline_record["baseline"]
-        return {"status": "verified", "issue_id": frozen["id"], "baseline": scores,
-                "attempts": {key: value["status"] for key, value in reports.items()},
-                "attempt_limit": issue["budget"]["attempts"], "attempts_used": len(reports),
-                "confirmation": confirmation["status"] if confirmation else None,
-                "checkpoint": str(destination / "result" / artifact_name(adapter))
-                if confirmation and confirmation["status"] == "accepted" else None}
+        result = {"status": "verified", "issue_id": frozen["id"], "baseline": scores,
+                  "attempts": {key: value["status"] for key, value in reports.items()},
+                  "attempt_limit": issue["budget"]["attempts"], "attempts_used": len(reports),
+                  "confirmation": confirmation["status"] if confirmation else None,
+                  "checkpoint": str(destination / "result" / artifact_name(adapter))
+                  if confirmation and confirmation["status"] == "accepted" else None}
+        if include_details:
+            result.update(issue=issue, attempt_reports=reports, confirmation_report=confirmation)
+        if "backbone" in issue:
+            result.update(backbone=str(workspace / issue["backbone"]["path"]),
+                          backbone_sha256=issue["backbone"]["sha256"])
+        return result

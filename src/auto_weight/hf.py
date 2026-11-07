@@ -5,7 +5,7 @@ import shutil
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from .checkpoint import HF_ADAPTER, HF_METADATA, checkpoint_hash, hf_files
+from .checkpoint import HF_METADATA, LORA_ADAPTER, artifact_name, checkpoint_hash, hf_files
 from .contracts import EditError
 from .statistics import baseline_summary, paired_report
 from . import text_eval
@@ -91,7 +91,11 @@ def evaluation_context(model_config, config, batch):
 
 
 def preflight(workspace, issue):
-    base_path = workspace / issue["base"]["path"]
+    base_path = workspace / issue.get("backbone", issue["base"])["path"]
+    if "backbone" in issue:
+        from .lora import load_config as load_lora_config
+
+        load_lora_config(workspace / issue["base"]["path"])
     config, gates = issue["model"]["config"], issue["gates"]
     context = evaluation_context(load_config(base_path), config, issue["budget"]["batch_size"])
     tokenizer = load_tokenizer(base_path, config)
@@ -103,12 +107,14 @@ def preflight(workspace, issue):
         except EditError as exc:
             raise EditError(f"{stage} dataset: {exc}") from exc
     if prompts["development"] & prompts["confirmation"]:
-        raise EditError("development and confirmation prompts overlap after tokenization")
+        raise EditError("development and confirmation prompts overlap after tokenization. "
+                        "Replace overlapping confirmation prompts with independent examples.")
 
 
 @torch.no_grad()
-def apply(model, base_path, proposal, proposal_dir):
-    parameters = dict(model.named_parameters(remove_duplicate=False))
+def apply(model, base_path, proposal, proposal_dir, *, parameters=None):
+    if parameters is None:
+        parameters = dict(model.named_parameters(remove_duplicate=False))
     addressed = {}
     changes = []
     for operation in proposal["operations"]:
@@ -178,8 +184,17 @@ def save_candidate(model, base_path, destination):
 def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expected_candidate=None, *, score_baseline):
     torch.set_num_threads(issue["budget"]["threads"])
     torch.set_num_interop_threads(1)
-    base_path = workspace / issue["base"]["path"]
-    base = load_model(base_path)
+    adapter = issue["model"]["adapter"]
+    source = workspace / issue["base"]["path"]
+    base_path = workspace / issue.get("backbone", issue["base"])["path"]
+    if adapter == LORA_ADAPTER:
+        from . import lora
+
+        def load_candidate(path):
+            return lora.attach(load_model(base_path), path)
+    else:
+        load_candidate = load_model
+    base = load_candidate(source)
     config, gates = issue["model"]["config"], issue["gates"]
     tokenizer = load_tokenizer(base_path, config)
     batch = issue["budget"]["batch_size"]
@@ -196,14 +211,19 @@ def evaluate(workspace, issue, proposal, proposal_dir, stage, temporary, expecte
         lambda: text_eval.score(base, tokenizer, groups, batch, policy))
     if proposal is None:
         return baseline_summary(before, metrics)
-    changes = apply(base, base_path, proposal, proposal_dir)
-    candidate_path = temporary / "model"
-    save_candidate(base, base_path, candidate_path)
+    candidate_path = temporary / artifact_name(adapter)
+    if adapter == LORA_ADAPTER:
+        weights = {key: tensor.clone() for key, tensor in lora.load_weights(source).items()}
+        changes = apply(base, base_path, proposal, proposal_dir, parameters=weights)
+        lora.save_candidate(source, candidate_path, weights)
+    else:
+        changes = apply(base, base_path, proposal, proposal_dir)
+        save_candidate(base, base_path, candidate_path)
     del base
-    candidate_sha = checkpoint_hash(candidate_path, HF_ADAPTER, frozen=True)
+    candidate_sha = checkpoint_hash(candidate_path, adapter, frozen=True)
     if expected_candidate is not None and candidate_sha != expected_candidate:
         raise EditError("replayed candidate differs from development candidate")
-    after, after_samples = text_eval.score(load_model(candidate_path), tokenizer, groups, batch, policy)
+    after, after_samples = text_eval.score(load_candidate(candidate_path), tokenizer, groups, batch, policy)
     report = paired_report(before, after, gates, metrics)
     report["inference"]["torch"] = str(torch.__version__)
     report["inference"]["generation"] = {"strategy": "greedy", **config,

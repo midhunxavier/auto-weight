@@ -110,13 +110,18 @@ def reference(value):
 
 def validate_issue(issue):
     external = isinstance(issue, dict) and issue.get("version") == "wet.issue.v2"
+    model = issue.get("model") if isinstance(issue, dict) else None
+    lora = isinstance(model, dict) and model.get("adapter") == "hf-lora-v1"
     required = {"version", "issue", "base", "model", "datasets", "gates", "budget"}
+    if lora:
+        required.add("backbone")
     fields(issue, required | ({"evaluator"} if external else set()), "issue")
     if issue["version"] not in {"wet.issue.v1", "wet.issue.v2"}:
         raise EditError("unsupported issue version")
     string(issue["issue"], "issue description")
     reference(issue["base"])
-    model = issue["model"]
+    if lora:
+        reference(issue["backbone"])
     fields(model, {"adapter", "config"}, "model")
     config = model["config"]
     if external:
@@ -127,7 +132,7 @@ def validate_issue(issue):
     elif model["adapter"] == "tiny-transformer-v1":
         validate_tiny_config(config)
         metrics = METRICS
-    elif model["adapter"] == "hf-causal-lm-v1":
+    elif model["adapter"] == "hf-causal-lm-v1" or lora:
         fields(config, {"prompt_format", "max_input_tokens", "max_new_tokens"}, "HF evaluation config")
         if config["prompt_format"] not in ("raw", "chat"):
             raise EditError("prompt_format must be raw or chat")

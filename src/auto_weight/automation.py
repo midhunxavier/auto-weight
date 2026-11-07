@@ -12,6 +12,7 @@ from .contracts import (
     FILE_LIMIT, EditError, fields, integer, strict_json, string, validate_proposal, write_json,
 )
 from .quickstart import setup
+from .report import setup_feedback
 from .runner import attempt, baseline, finalize, load_issue, verify
 
 RESPONSE_LIMIT = 1024**2
@@ -46,21 +47,27 @@ def installed_proposer(name):
 
 def inspect_development(path):
     """Infer the strongest available metric and extract one example per group."""
-    if not path.is_file() or path.stat().st_size > FILE_LIMIT:
-        raise EditError(f"missing development file or byte limit exceeded: {path}")
+    if not path.is_file():
+        raise EditError(f"development dataset file not found: {path}. Supply a labeled JSONL file.")
+    if path.stat().st_size > FILE_LIMIT:
+        raise EditError(f"development dataset exceeds {FILE_LIMIT // 1024**2} MiB. Use a smaller labeled file.")
     groups, preview = {}, {}
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for index, raw in enumerate(stream, 1):
             integer(index, "development example count", 1, 10000)
             digest.update(raw)
-            row = strict_json(raw, 32 * 1024)
-            fields(row, {"group", "prompt", "check"}, "development example")
-            group = string(row["group"], "group", 80)
-            prompt = string(row["prompt"], "prompt", 12000)
+            try:
+                row = strict_json(raw, 32 * 1024)
+                fields(row, {"group", "prompt", "check"}, "development example")
+                group = string(row["group"], "group", 80)
+                prompt = string(row["prompt"], "prompt", 12000)
+            except EditError as exc:
+                raise EditError(f"development dataset: line {index}: {exc}. "
+                                "Supply one JSON object with group, prompt, and check per line.") from exc
             check = row["check"]
             if not isinstance(check, dict) or check.get("type") not in ("json", "exact"):
-                raise EditError(f"unsupported check in development group {group}")
+                raise EditError(f"development dataset: line {index}: use check type 'exact' or 'json'.")
             if check["type"] == "exact":
                 metric = "text_exact"
             elif "expected" in check:
@@ -194,10 +201,16 @@ def proposal_request(proposer, issue, preview, names, changes, history, step, *,
 
 
 def repair(args):
+    if getattr(args, "lora", None) is not None and args.donor:
+        raise EditError("LoRA runs use a single adapter. Remove --donor to scale its tensors.")
     groups, preview, digest = inspect_development(args.development)
     if not args.improve and not args.preserve:
-        if args.fix_group not in groups or len(groups) < 2:
-            raise EditError("automatic gates need the fix group and at least one preservation group")
+        if args.fix_group not in groups:
+            available = ", ".join(sorted(groups)) or "none"
+            raise EditError(f"fix group {args.fix_group!r} is missing. Set --fix-group to a development group "
+                            f"({available}) or add labeled examples for the missing group.")
+        if len(groups) < 2:
+            raise EditError("add a second group of labeled examples for behavior you want to preserve")
         args.improve = [[args.fix_group, groups[args.fix_group], "0.10", "0.90"]]
         args.preserve = [[group, metric, "-0.05"] for group, metric in groups.items() if group != args.fix_group]
     elif not args.improve or not args.preserve:
@@ -219,11 +232,14 @@ def repair(args):
     base = workspace / issue["base"]["path"]
     names = tuple(item["name"] for item in tensor_metadata(base, "", 10000)["tensors"])
     print(f"Repair workspace: {workspace}", file=sys.stderr, flush=True)
+    print("Acceptance rules\n" + "\n".join(ready["acceptance_rules"]), file=sys.stderr, flush=True)
     changes = {key: changed_tensors(base, Path(reference["path"]), names)
                for key, reference in donors.items()}
     print(f"Scoring development baseline (up to {issue['budget']['timeout_seconds']} seconds)",
           file=sys.stderr, flush=True)
     scores = baseline(workspace)
+    for message in setup_feedback(scores):
+        print(message, file=sys.stderr, flush=True)
     proposer = installed_proposer(args.proposer_model)
     records = workspace / "automation"
     records.mkdir()
@@ -275,6 +291,8 @@ def repair(args):
               "proposer": proposer, "proposals": len(history), "attempts": verified["attempts"],
               "selected_attempt": selected, "confirmation": verified["confirmation"],
               "checkpoint": verified["checkpoint"], "baseline": scores}
+    if "backbone" in verified:
+        result.update(backbone=verified["backbone"], backbone_sha256=verified["backbone_sha256"])
     if error is not None:
         result["error"] = error
     write_json(records / "result.json", result)

@@ -1,84 +1,33 @@
 # AutoWeight
 
-**Edit model weights. Verify the result.**
+AutoWeight tests weight edits intended to repair regressions in local Hugging Face models and PEFT LoRA adapters. An LLM proposes edits from your failure description and development results. AutoWeight exports the selected checkpoint or adapter only if it passes improvement and preservation checks on a separate confirmation set.
 
-AutoWeight brings model weight editing to Codex CLI and Claude Code. The agent proposes edits to a local Hugging Face model. AutoWeight tests each edit on development examples and exports a new Transformers checkpoint if the selected edit passes a separate confirmation set.
+## Use it
 
-[AutoWeight website](https://midhunxavier.com/auto-weight/) · [Research blog](https://midhunxavier.com/blog/auto-weight/checkpoint-repair-and-weight-space-experiments/) · [PyPI package](https://pypi.org/project/auto-weight/)
-
-## Quickstart with Codex CLI or Claude Code
-
-### 1. Install and configure AutoWeight
-
-Use Python 3.11 or newer on macOS or Linux and an installed Codex CLI or Claude Code client. Put these inputs in an existing directory such as `repair-inputs/`.
-
-- `base/` contains a local Hugging Face causal language model with safetensors weights, config, and tokenizer.
-- `development.jsonl` and `confirmation.jsonl` contain labeled prompts for the behaviors to change and preserve. Use at least 32 examples per checked group in each file. Use `fix` for the improvement group and keep confirmation examples out of the agent's context. [JSONL examples](docs/12-hugging-face.md)
-- Optionally, add a compatible earlier checkpoint as a donor so the proposer can restore or blend weights.
+Install with Python 3.11 or newer on macOS or Linux.
 
 ```sh
-uv tool install 'auto-weight[hf,mcp]'
-auto-weight setup-runtime --input-root ./repair-inputs
+uv tool install 'auto-weight[hf,lora,mcp]'
 ```
 
-Replace `./repair-inputs` with your input directory. For pip, run `python -m pip install 'auto-weight[hf,mcp]'` in an active virtual environment, then run `setup-runtime`. [Installation and troubleshooting](docs/06-cli-and-mcp.md#install-the-python-runtime)
+Bring a local model and two labeled JSONL files. Each file needs at least 32 examples per behavior you want to fix or preserve. Name the improvement group `fix` and keep confirmation examples out of the proposer's context. [Model and data format](docs/12-hugging-face.md)
 
-### 2. Connect your CLI
-
-Once setup reports `ready`, run the commands for your client from your project directory. If you installed with pip, keep the virtual environment active during registration.
-
-**Codex CLI**
+Start Ollama, install the default proposer with `ollama pull qwen3.5`, then run:
 
 ```sh
-codex mcp add auto-weight -- "$(command -v auto-weight-mcp)"
-codex
-```
-
-**Claude Code**
-
-```sh
-claude mcp add --transport stdio auto-weight -- "$(command -v auto-weight-mcp)"
-claude
-```
-
-Use `/mcp` in your session to check for `auto-weight`. The PyPI package provides the MCP server for this setup. The repository also provides a plugin with a bundled skill. [Public CLI setup](https://midhunxavier.com/auto-weight/#connect) · [Bundled plugin](plugins/auto-weight/README.md#load-the-plugin)
-
-### 3. Ask for a weight edit
-
-> Use AutoWeight to remove Markdown fences from JSON responses in the model at `base`. Improve the `fix` group and preserve queue extraction. Use `development.jsonl` to try edits and reserve `confirmation.jsonl` for one final check. Export the edited checkpoint if it passes.
-
-An accepted run includes a confirmation report and the path to a complete checkpoint you can load with `from_pretrained()`. [Transformers loading example](docs/12-hugging-face.md)
-
-## Try the offline demo
-
-After installation, run `auto-weight demo` from any directory. It creates a tiny model locally and runs two scripted edits on CPU. The final JSON reports `"status": "accepted"` and an exported `checkpoint` path under `runs/demo-<id>/`. On the confirmation set, correct JSON goes from 0/32 to 32/32 while queue extraction stays at 32/32.
-
-## Other terminal workflows
-
-Start Ollama and install a proposer model before running the command. It uses the `fix` group to measure improvement. [Ollama setup](docs/13-automatic-repair.md)
-
-```sh
-auto-weight repair --base ./repair-inputs/base \
-  --development ./repair-inputs/development.jsonl \
-  --confirmation ./repair-inputs/confirmation.jsonl \
+auto-weight repair --base ./my-model \
+  --development dev.jsonl --confirmation holdout.jsonl \
   --issue "Restore raw JSON and preserve queue extraction"
 ```
 
-You can also review and confirm proposals yourself. [Manual proposal workflow](docs/06-cli-and-mcp.md#review-proposals-yourself)
+The result includes scores, a report, and an export path when accepted. Add `--donor ./earlier-model` to enable checkpoint restores and blends. For LoRA repair, add `--lora ./adapter` and supply its original model as `--base`.
 
-## A real repair
+For Codex or Claude Code, run `auto-weight setup-runtime --input-root ./repair-inputs` and follow the [plugin setup](plugins/auto-weight/README.md#load-the-plugin).
 
-We fine-tuned SmolLM2 on a synthetic order fulfillment policy. It learned the policy and started wrapping JSON in Markdown fences, breaking the parser. Rolling back fixed the JSON and erased the policy. A weight edit proposed by Codex used a related checkpoint and passed both checks without further training. [Reproduce the experiment](examples/policy-repair/README.md)
+## What the copy-repair example proves
 
-| On fresh examples | Correct raw JSON | Correct policy decisions |
-| --- | ---: | ---: |
-| After fine-tuning | 0/96 | 96/96 |
-| Full rollback | 96/96 | 0/96 |
-| Accepted weight edit | **96/96** | **96/96** |
+A small transformer lost copying accuracy during ordinary training on synthetic sequences. A 50% blend with an earlier checkpoint raised held-out collision-copy accuracy from **38.75% to 47.41%**, while unique-copy accuracy stayed around **99.31%**.
 
-## Examples and documentation
+This confirms improvement and preservation for that one task using standard checkpoint blending. A full rollback was not compared on confirmation. [Experiment, provenance, and reports](examples/copy-repair/README.md)
 
-- **Five agent repair cases.** Compare Codex, Claude Code, and a fixed edit on JSON, routing, and policy regressions. [Agent repair examples](examples/agent-repairs/README.md) · [DistilGPT2 walkthrough](examples/distilgpt2-quickstart/README.md) · [JSON repair](examples/json-repair/README.md) · [Copying repair](examples/copy-repair/README.md)
-- **Eight weight-space studies.** Inspect tensors, replay published repairs, and score constructed policies. These examples use the source checkout. [Research examples and replay results](examples/weight-space/README.md) · [Install from a checkout](docs/06-cli-and-mcp.md#install-from-a-checkout)
-- [Research blog source](docs/blog/auto-weight-checkpoint-repair.md) · [Architecture](docs/03-architecture.md) · [Evaluation preparation](docs/06-cli-and-mcp.md#prepare-labeled-evaluation-data) · [Evaluation protocol](docs/05-evaluation-protocol.md) · [All documentation](docs/)
-- [Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/) · [Companion research repository](https://github.com/midhunxavier/weight-space-programming)
+[Documentation](docs/README.md) · [Automatic repair settings](docs/13-automatic-repair.md) · [Manual workflow](docs/06-cli-and-mcp.md#review-proposals-yourself)

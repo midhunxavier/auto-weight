@@ -7,6 +7,8 @@ The issue is a strict JSON object with `version: "wet.issue.v1"`, `issue` text, 
 - `gates` specifies `group`, `metric` (from the adapter’s [metrics](05-evaluation-protocol.md)), `kind` (`improve` or `preserve`) and `min_delta`. Include both kinds. Rate metrics can also set `min_candidate`, an absolute floor for the candidate’s observed score.
 - `budget` specifies `attempts`, `timeout_seconds`, `batch_size` and `threads`.
 
+LoRA issues use `model.adapter: "hf-lora-v1"` and the same text evaluation config as `hf-causal-lm-v1`. The `base` reference identifies the editable PEFT adapter. A separate top-level `backbone` reference pins the original dense model and tokenizer. LoRA proposals reference the adapter hash as `base_sha256` and use `scale` or `wet.proposal.v2` replacement operations on its stored tensors.
+
 A proposal has `version: "wet.proposal.v1"`, `base_sha256`, `author`, `hypothesis` and `operations`. The operations accept exact `tensors` names. Each tensor may appear once per proposal.
 
 | `op` | Extra fields | Effect |
@@ -17,4 +19,4 @@ A proposal has `version: "wet.proposal.v1"`, `base_sha256`, `author`, `hypothesi
 
 A donor must have the full tensor layout, shapes and dtypes of the base model. Verify that donor and base share architecture, token IDs, and meaningful parameter alignment before proposing a blend. The runner checks tensor compatibility. For Hugging Face, donor directories must also match the model configuration and tokenizer files. Address a tied parameter through only one of its names. A proposal that changes no numerical values produces an error result.
 
-The proposer supplies data only. The operation schema has no code, shell commands, or evaluator fields. For complete records, see the [NPZ case](../examples/copy-repair/README.md) and [Hugging Face case](../examples/json-repair/README.md).
+The proposer supplies data only. The operation schema has no code, shell commands, or evaluator fields. For complete records, see the [copying regression case](../examples/copy-repair/README.md). For Hugging Face inputs, see the [text evaluation guide](12-hugging-face.md).

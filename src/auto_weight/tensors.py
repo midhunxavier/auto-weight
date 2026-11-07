@@ -4,7 +4,7 @@ from zipfile import BadZipFile, ZipFile
 
 import numpy as np
 
-from .checkpoint import checkpoint_hash, hf_files, HF_ADAPTER, tensor_metadata
+from .checkpoint import checkpoint_files, checkpoint_hash, directory_adapter, tensor_metadata
 from .contracts import CHECKPOINT_LIMIT, EditError, canonical, integer
 
 PATCH_LIMIT = 64 * 1024**2
@@ -74,13 +74,14 @@ def metadata(path, prefix, limit):
 
 
 def read_tensor(path, name, bounds=None, summary=False):
-    identity = checkpoint_hash(path, HF_ADAPTER if path.is_dir() else None)
+    adapter = directory_adapter(path) if path.is_dir() else None
+    identity = checkpoint_hash(path, adapter)
     if path.is_dir():
         try:
             from safetensors import safe_open
         except ImportError as exc:
             raise EditError("install auto-weight[hf] to read Hugging Face tensors") from exc
-        for filename, file in hf_files(path).items():
+        for filename, file in checkpoint_files(path, adapter).items():
             if filename.endswith(".safetensors"):
                 with safe_open(file, framework="pt") as archive:
                     if name in archive.keys():
@@ -101,7 +102,7 @@ def read_tensor(path, name, bounds=None, summary=False):
             values = archive[name][indexes].astype("float64")
     if not np.isfinite(values).all():
         raise EditError("tensor slice contains nonfinite values")
-    if checkpoint_hash(path, HF_ADAPTER if path.is_dir() else None) != identity:
+    if checkpoint_hash(path, adapter) != identity:
         raise EditError("checkpoint changed while reading")
     result = {"status": "read", "sha256": identity, "tensor": name, "shape": list(shape)}
     if summary:

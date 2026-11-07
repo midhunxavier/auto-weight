@@ -42,4 +42,35 @@ tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
 model = AutoModelForCausalLM.from_pretrained(path, local_files_only=True, use_safetensors=True)
 ```
 
-[Complete JSON repair case and commands](../examples/json-repair/README.md) · [Transformers model loading reference](https://huggingface.co/docs/transformers/main/en/main_classes/model)
+[Transformers model loading reference](https://huggingface.co/docs/transformers/main/en/main_classes/model)
+
+## Repair a PEFT LoRA adapter
+
+Install the optional PEFT dependency with `python -m pip install 'auto-weight[hf,lora,mcp]'`. Give AutoWeight the original local model and tokenizer as `--base` and the LoRA folder as `--lora`. The LoRA folder needs `adapter_config.json` and `adapter_model.safetensors`. Use the exact base weights and tokenizer used for the fine-tune. AutoWeight snapshots and verifies both inputs.
+
+```sh
+auto-weight repair --workspace runs/lora-repair --base ./original-model --lora ./fine-tuned-adapter \
+  --development dev.jsonl --confirmation holdout.jsonl --fix-group api \
+  --issue "Restore raw JSON and preserve routing"
+```
+
+For manual `setup`, use the same model and dataset paths and supply explicit `--improve` and `--preserve` rules. Inspect adapter tensors with `auto-weight tensors --checkpoint ./fine-tuned-adapter`. Manual proposals use the adapter's `base_sha256` from setup and target the stored LoRA A or B tensors. Manual runs support scale and replacement operations. The automatic proposer uses scaling. In MCP, pass `base` and `lora` to `create_run`, then use `list_targets` and `try_edit` as usual.
+
+This mode supports one standard PEFT LoRA adapter with A/B matrices for a dense causal language model. Adapter variants, saved full modules or biases, quantized bases, and donor edits are outside this mode.
+
+An accepted run exports only the two PEFT files under `confirmation/result/adapter/`. `auto-weight verify` reports the adapter under `checkpoint` and the frozen original model under `backbone`. Load them together:
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+base = "runs/lora-repair/backbone"
+adapter = "runs/lora-repair/confirmation/result/adapter"
+tokenizer = AutoTokenizer.from_pretrained(base, local_files_only=True)
+model = AutoModelForCausalLM.from_pretrained(
+    base, local_files_only=True, use_safetensors=True, dtype="auto", attn_implementation="eager",
+)
+model = PeftModel.from_pretrained(model, adapter, local_files_only=True).eval()
+```
+
+[PEFT checkpoint format](https://huggingface.co/docs/peft/en/developer_guides/checkpoint)

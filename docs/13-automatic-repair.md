@@ -21,23 +21,3 @@ The proposer receives the issue, a sample of development examples, a menu of par
 The first attempt that passes development is replayed once on confirmation. A passing confirmation publishes a complete model. A failing confirmation ends the run with a report. `--attempts` bounds proposer calls, including invalid responses. When the budget ends without a passing development attempt, no candidate is confirmed or exported.
 
 The final JSON includes the outcome, workspace, and checkpoint path when accepted. Without `--workspace`, the command creates a fresh workspace under `runs/`. The `automation/` subdirectory records the proposer identity, requests, responses, validated proposals, and feedback. The ordinary trial and confirmation reports stay in their usual locations.
-
-## Reproduce the live test
-
-Prepare the two DistilGPT2 checkpoints and labeled datasets from the [DistilGPT2 walkthrough](../examples/distilgpt2-quickstart/README.md). Run the command below from the repository root. It uses the same confirmation split as the manual walkthrough, with confirmation data held out from the proposer.
-
-```sh
-auto-weight repair --workspace runs/distilgpt2-one-command \
-  --base runs/distilgpt2-inputs/regressed \
-  --development runs/distilgpt2-inputs/development.jsonl \
-  --confirmation runs/distilgpt2-inputs/confirmation.jsonl \
-  --donor runs/distilgpt2-inputs/prior \
-  --fix-group api --max-new-tokens 24 --attempts 5 \
-  --issue "Restore raw priority JSON after the follow-up fine-tune added Markdown fences. Preserve exact queue extraction. The donor is from before the format regression."
-```
-
-The local Qwen3.5 proposer first chose a 20% blend on the 38 changed tensors. The candidate still failed all 36 development JSON examples, so the runner discarded it. After receiving that result, the proposer chose a 50% blend. It passed both development checks and was confirmed once. On confirmation, correct raw JSON rose from 0/60 to 60/60, and exact queue extraction was 60/60 before and after the edit.
-
-The first implementation pilots exposed two failure modes. The proposer invented wildcard names and then tried a tensor that had identical values in both checkpoints. The tested command constrains names to an available target menu and uses the observed donor differences to guide that menu.
-
-[Proposer identity](../examples/distilgpt2-quickstart/automatic/proposer.json) · [First response](../examples/distilgpt2-quickstart/automatic/response-001.json) · [Request with feedback](../examples/distilgpt2-quickstart/automatic/request-002.json) · [Second response](../examples/distilgpt2-quickstart/automatic/response-002.json) · [Acceptance report](../examples/distilgpt2-quickstart/automatic/acceptance.json)

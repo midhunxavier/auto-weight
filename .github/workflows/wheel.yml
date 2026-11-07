@@ -55,7 +55,7 @@ jobs:
         run: |
           wheels=("$RUNNER_TEMP/wheels"/auto_weight-*.whl)
           python="$RUNNER_TEMP/auto-weight-venv/bin/python"
-          "$python" -m pip install "${wheels[0]}[hf,mcp,test]"
+          "$python" -m pip install "${wheels[0]}[hf,lora,mcp,test]"
           "$python" -m pip check
 
       - name: Test the installed wheel outside the checkout

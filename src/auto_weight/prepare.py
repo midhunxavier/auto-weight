@@ -78,7 +78,9 @@ def prepare_evals(base, source, output, *, confirmation=None, seed=0, prompt_for
     if prompt_format not in {"raw", "chat"}:
         raise EditError("prompt_format must be raw or chat")
     if not confirmation_independent:
-        return {"status": "needs_examples", "reason": "supply independently chosen confirmation examples"}
+        return {"status": "needs_examples", "reason": "supply independently chosen confirmation examples",
+                "next_steps": ["Collect labeled examples the proposer has not seen and supply a separate "
+                               "confirmation file."]}
     rows, source_id = read_source(source)
     source_ids = {"source": source_id}
     if conversion is not None:
@@ -99,8 +101,12 @@ def prepare_evals(base, source, output, *, confirmation=None, seed=0, prompt_for
     missing = {stage: {group: 32 - count[group] for group in sorted(groups) if count[group] < 32}
                for stage, count in counts.items()}
     if len(groups) < 2 or any(missing.values()):
+        steps = [f"{stage}: add {count} more labeled examples to group {group!r}."
+                 for stage, deficits in missing.items() for group, count in deficits.items()]
+        if len(groups) < 2:
+            steps.append("Include both a group for the behavior to fix and a group for behavior to preserve.")
         return {"status": "needs_examples", "minimum_per_group_per_split": 32,
-                "minimum_groups": 2, "counts": counts, "missing": missing}
+                "minimum_groups": 2, "counts": counts, "missing": missing, "next_steps": steps}
 
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
