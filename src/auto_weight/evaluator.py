@@ -1,5 +1,6 @@
 """File protocol for trusted local evaluator scripts."""
 from collections import Counter, defaultdict
+from contextlib import ExitStack
 from pathlib import Path
 import shutil
 import subprocess
@@ -7,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from .checkpoint import INDEX_FILE, NAMED_ADAPTER, checkpoint_hash, hf_files
+from .checkpoint import HF_METADATA, INDEX_FILE, NAMED_ADAPTER, checkpoint_hash, hf_files
 from .contracts import (
     FILE_LIMIT, EditError, fields, file_hash, finite, identify, integer, read_json, strict_json, string, write_json,
 )
@@ -123,29 +124,14 @@ def observe(workspace, issue, artifact, artifact_sha, stage, temporary):
     return scores, {"work": work, "observations": observations}
 
 
-def materialize(base_path, candidate_path, proposal, directory, adapter):
-    if any(operation["op"] != "replace" for operation in proposal["operations"]):
-        raise EditError("external checkpoint adapters support replacement proposals")
-    changes = []
-    if adapter == NAMED_ADAPTER:
-        base = load_arrays(base_path)
-        candidate = base.copy()
-        for operation in proposal["operations"]:
-            changes.extend(replace_arrays(base, candidate, operation, directory))
-        check_changes(changes)
-        np.savez(candidate_path, **candidate)
-        return changes
-
+def hf_layout(path):
+    """Validate canonical unquantized storage without assuming a model architecture."""
     from safetensors import safe_open
-    from safetensors.torch import load_file, save_file
 
-    # Preserve the exact shard index and tokenizer/config files. Each logical tied
-    # parameter must have one stored tensor, as in canonical HF safe serialization.
-    config = read_json(base_path / "config.json")
+    files = hf_files(path)
+    config = read_json(path / "config.json")
     if config.get("quantization_config") is not None:
-        raise EditError("raw HF replacement requires unquantized weights")
-    candidate_path.mkdir()
-    files = hf_files(base_path)
+        raise EditError("raw HF edits require unquantized weights")
     index = {}
     for name, source in files.items():
         if name.endswith(".safetensors"):
@@ -160,24 +146,111 @@ def materialize(base_path, candidate_path, proposal, directory, adapter):
     tied_embeddings = config.get("tie_word_embeddings") or text_config.get("tie_word_embeddings")
     if tied_embeddings and any(name.endswith("lm_head.weight") for name in index):
         raise EditError("tied output embeddings must use the canonical single stored tensor")
+    return files, index, config
+
+
+def compatible_hf_donor(base_path, base_index, base_config, donor_path):
+    files, index, config = hf_layout(donor_path)
+    for name in HF_METADATA - {"config.json", "generation_config.json"}:
+        base, donor = base_path / name, donor_path / name
+        if base.is_file() != donor.is_file() or (base.is_file() and file_hash(base) != file_hash(donor)):
+            raise EditError("donor tokenizer assets differ from base")
+    ignored = {"_name_or_path", "transformers_version"}
+    if ({k: v for k, v in base_config.items() if k not in ignored}
+            != {k: v for k, v in config.items() if k not in ignored}):
+        raise EditError("donor architecture config differs from base")
+    if index.keys() != base_index.keys():
+        raise EditError("donor stored tensor names differ from base")
+    return files, index
+
+
+def native_hf_change(tensor, target, operation, donor=None):
+    """Use the same float64 arithmetic and stored-dtype rounding as native HF edits."""
+    import torch
+
+    if target.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        raise EditError(f"native operation requires dense floating-point weights: {tensor}")
+    before = target.double()
+    kind = operation["op"]
+    if kind == "scale":
+        after = (before * operation["factor"]).to(target.dtype)
+    else:
+        if donor.shape != target.shape or donor.dtype != target.dtype:
+            raise EditError(f"donor parameter shape or dtype differs: {tensor}")
+        if kind == "restore":
+            after = donor
+        else:
+            alpha = operation["alpha"]
+            after = ((1 - alpha) * before + alpha * donor.double()).to(target.dtype)
+    if not torch.isfinite(before).all() or not torch.isfinite(after).all():
+        raise EditError(f"nonfinite edited parameter: {tensor}")
+    delta = after.double() - before
+    count = int(torch.count_nonzero(delta))
+    item = {"tensor": tensor, "op": kind, "parameters_changed": count,
+            "l2_delta": delta.norm().item(), "max_abs_delta": delta.abs().max().item()} if count else None
+    return after, item
+
+
+def materialize(base_path, candidate_path, proposal, directory, adapter):
+    changes = []
+    if adapter == NAMED_ADAPTER:
+        if any(operation["op"] != "replace" for operation in proposal["operations"]):
+            raise EditError("named-tensor external adapters support replacement proposals")
+        base = load_arrays(base_path)
+        candidate = base.copy()
+        for operation in proposal["operations"]:
+            changes.extend(replace_arrays(base, candidate, operation, directory))
+        check_changes(changes)
+        np.savez(candidate_path, **candidate)
+        return changes
+
+    from safetensors import safe_open
+    from safetensors.torch import load_file, save_file
+
+    # Preserve the exact shard index and metadata. Tied parameters are stored once.
+    files, index, config = hf_layout(base_path)
+    candidate_path.mkdir()
     by_shard = defaultdict(list)
+    donors = {}
     for operation in proposal["operations"]:
-        for tensor, bounds, values in replacement_items(operation, directory):
+        if operation["op"] == "replace":
+            items = [(name, (bounds, values)) for name, bounds, values in replacement_items(operation, directory)]
+        else:
+            if "donor" in operation:
+                donor_path = (directory / operation["donor"]["path"]).resolve()
+                if donor_path not in donors:
+                    donors[donor_path] = compatible_hf_donor(base_path, index, config, donor_path)
+            items = [(name, None) for name in operation["tensors"]]
+        for tensor, replacement in items:
             if tensor not in index:
                 raise EditError(f"unknown stored tensor: {tensor}")
-            by_shard[index[tensor]].append((tensor, bounds, values))
-    for name, source in files.items():
-        target = candidate_path / name
-        if name not in by_shard:
-            shutil.copyfile(source, target)
-            continue
-        weights = load_file(source)
-        for tensor, bounds, values in by_shard[name]:
-            item = replace_torch(tensor, weights[tensor], bounds, values)
-            if item:
-                changes.append(item)
-        with safe_open(source, framework="pt") as archive:
-            save_file(weights, target, metadata=archive.metadata())
+            by_shard[index[tensor]].append((tensor, operation, replacement))
+    with ExitStack() as stack:
+        readers = {}
+        for name, source in files.items():
+            target = candidate_path / name
+            if name not in by_shard:
+                shutil.copyfile(source, target)
+                continue
+            weights = load_file(source)
+            for tensor, operation, replacement in by_shard[name]:
+                if replacement is not None:
+                    bounds, values = replacement
+                    item = replace_torch(tensor, weights[tensor], bounds, values)
+                else:
+                    donor = None
+                    if "donor" in operation:
+                        donor_path = (directory / operation["donor"]["path"]).resolve()
+                        donor_files, donor_index = donors[donor_path]
+                        path = donor_files[donor_index[tensor]]
+                        if path not in readers:
+                            readers[path] = stack.enter_context(safe_open(path, framework="pt"))
+                        donor = readers[path].get_tensor(tensor)
+                    weights[tensor], item = native_hf_change(tensor, weights[tensor], operation, donor)
+                if item:
+                    changes.append(item)
+            with safe_open(source, framework="pt") as archive:
+                save_file(weights, target, metadata=archive.metadata())
     check_changes(changes)
     return changes
 

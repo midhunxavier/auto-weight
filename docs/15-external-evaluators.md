@@ -43,6 +43,33 @@ A `wet.proposal.v2` keeps the same envelope as v1. A replacement operation has t
 }
 ```
 
-The payload contains exactly the declared tensor names. The array in this example has shape `[2, 3]`. Each pair is a half-open range. Omit a tensor from `slices` to replace it in full. Distinct operations may address disjoint slices of the same tensor. The runner rejects overlaps, invalid shapes, nonfinite values and conversions, and patches over the byte or changed-parameter limits. It snapshots the payload for confirmation. The existing built-in adapters accept both proposal versions. External adapters use replacement operations.
+The payload contains exactly the declared tensor names. The array in this example has shape `[2, 3]`. Each pair is a half-open range. Omit a tensor from `slices` to replace it in full. Distinct operations may address disjoint slices of the same tensor. The runner rejects overlaps, invalid shapes, nonfinite values and conversions, and patches over the byte or changed-parameter limits. It snapshots the payload for confirmation. The existing built-in adapters accept both proposal versions. Named-tensor external adapters use replacement operations.
 
 Use `auto-weight read-tensor` or MCP `read_tensor` to inspect a named slice. A read returns up to 4,096 values with a 64 KiB response limit. The summary option reports statistics over the same bounded region.
+
+## Native Hugging Face operations
+
+The `hf-safetensors-v1` external adapter also accepts the standard `restore`, `blend`, and `scale` operations, including full-checkpoint blends. Targets are exact stored tensor names; tied embeddings are addressed once. Donors are frozen and must match tokenizer assets, architecture configuration, stored tensor names, and selected tensor shapes and dtypes. Native operations use float64 arithmetic followed by rounding to the stored FP16, BF16, or FP32 dtype, and reject nonfinite inputs or results. They preserve the base's metadata and shard layout. Replacement byte and changed-parameter limits remain unchanged and continue to apply to replacement operations.
+
+For example, this proposal blends one tensor 25% toward a compatible donor:
+
+```json
+{
+  "version": "wet.proposal.v1",
+  "base_sha256": "<base checkpoint SHA-256>",
+  "author": "operator",
+  "hypothesis": "Partially restore this tensor while retaining the required behavior.",
+  "operations": [
+    {
+      "op": "blend",
+      "tensors": ["model.layers.0.self_attn.q_proj.weight"],
+      "alpha": 0.25,
+      "donor": {"path": "donor", "sha256": "<donor checkpoint SHA-256>"}
+    }
+  ]
+}
+```
+
+Replace the placeholders with fingerprints from `auto-weight fingerprint --checkpoint PATH` and use an exact tensor name from your checkpoint. The donor path is relative to the proposal file. Here, `alpha` is the donor fraction: the selected tensor becomes `0.75 * base + 0.25 * donor`. Unselected tensors retain their base values. To blend a whole checkpoint, explicitly list every stored tensor, splitting the list into operations if needed. The existing limits are 200 names per operation and 16 operations per proposal; wildcards are not supported.
+
+Use the usual repair workflow: `try` scores development data, and `finalize` evaluates one eligible candidate on the reserved confirmation set. The runner snapshots the donor and replays the frozen proposal for confirmation; changing the original donor afterward does not change that candidate. A blend is exported only if it passes the configured confirmation gates.
